@@ -3,18 +3,23 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const session = await auth();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const tenantId = session.user.tenantId;
-  if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
+    const tenantId = session.user.tenantId;
+    if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
 
-  const stages = await prisma.funnelStage.findMany({
-    where: { tenantId },
-    orderBy: { order: "asc" },
-  });
+    const stages = await prisma.funnelStage.findMany({
+      where: { tenantId },
+      orderBy: { order: "asc" },
+    });
 
-  return NextResponse.json(stages);
+    return NextResponse.json(stages);
+  } catch (error) {
+    console.error("GET /api/funnel-stages error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {

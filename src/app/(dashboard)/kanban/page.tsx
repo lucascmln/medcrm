@@ -8,11 +8,19 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, AlertCircle, Search, Phone } from "lucide-react";
+import { Plus, AlertCircle, Search, Phone, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LeadFormModal } from "@/components/leads/LeadFormModal";
 import { formatDate, getInitials, avatarColor, cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
+
+/** Safe fetch → always resolves, never throws. Returns null on any failure. */
+async function safeJson<T>(res: Response): Promise<T | null> {
+  if (!res.ok) return null;
+  const text = await res.text();
+  if (!text.trim()) return null;
+  try { return JSON.parse(text) as T; } catch { return null; }
+}
 
 interface Lead {
   id: string; name: string; phone: string; procedure?: string;
@@ -117,6 +125,7 @@ export default function KanbanPage() {
   const [stages, setStages] = useState<FunnelStage[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState("");
@@ -125,14 +134,45 @@ export default function KanbanPage() {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const fetchData = useCallback(async () => {
-    const [stagesRes, leadsRes] = await Promise.all([
-      fetch("/api/funnel-stages"),
-      fetch("/api/leads?all=true"),
-    ]);
-    const [stagesData, leadsData] = await Promise.all([stagesRes.json(), leadsRes.json()]);
-    setStages(Array.isArray(stagesData) ? stagesData : []);
-    setLeads(leadsData.leads ?? []);
-    setLoading(false);
+    setLoading(true);
+    setFetchError(null);
+    try {
+      const [stagesRes, leadsRes] = await Promise.all([
+        fetch("/api/funnel-stages"),
+        fetch("/api/leads?all=true"),
+      ]);
+
+      const [stagesData, leadsData] = await Promise.all([
+        safeJson<FunnelStage[] | { error: string }>(stagesRes),
+        safeJson<{ leads: Lead[] } | { error: string }>(leadsRes),
+      ]);
+
+      if (!stagesRes.ok || stagesData === null) {
+        const msg = stagesData && "error" in stagesData ? stagesData.error : `HTTP ${stagesRes.status}`;
+        setFetchError(`Erro ao carregar etapas do funil: ${msg}`);
+        setStages([]);
+      } else {
+        setStages(Array.isArray(stagesData) ? stagesData : []);
+      }
+
+      if (!leadsRes.ok || leadsData === null) {
+        const msg = leadsData && "error" in leadsData ? leadsData.error : `HTTP ${leadsRes.status}`;
+        // Only set error if stages also failed; otherwise show partial data with empty leads
+        if (!stagesRes.ok) {
+          setFetchError(`Erro ao carregar funil. Verifique sua sessão e tente novamente.`);
+        }
+        setLeads([]);
+      } else {
+        setLeads("leads" in leadsData ? leadsData.leads : []);
+      }
+    } catch (err) {
+      console.error("Kanban fetchData error:", err);
+      setFetchError("Erro de conexão. Verifique sua rede e tente novamente.");
+      setStages([]);
+      setLeads([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -183,6 +223,22 @@ export default function KanbanPage() {
     );
   }
 
+  if (fetchError && stages.length === 0) {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-64 gap-4">
+        <AlertCircle className="w-10 h-10 text-red-400" />
+        <div className="text-center">
+          <p className="text-sm font-medium text-slate-700">{fetchError}</p>
+          <p className="text-xs text-slate-400 mt-1">O funil não pôde ser carregado.</p>
+        </div>
+        <button onClick={fetchData}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors">
+          <RefreshCw className="w-4 h-4" /> Tentar novamente
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 h-full flex flex-col gap-4">
       {/* Header */}
@@ -209,6 +265,17 @@ export default function KanbanPage() {
           </Button>
         </div>
       </div>
+
+      {/* Non-fatal error banner */}
+      {fetchError && stages.length > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span className="flex-1">{fetchError}</span>
+          <button onClick={fetchData} className="flex items-center gap-1 text-xs font-medium underline hover:no-underline">
+            <RefreshCw className="w-3 h-3" /> Recarregar
+          </button>
+        </div>
+      )}
 
       {/* Stats bar */}
       <div className="flex gap-2 overflow-x-auto pb-1">
