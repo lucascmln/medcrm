@@ -3,12 +3,13 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { format, subMonths, eachDayOfInterval } from "date-fns";
 import { differenceInHours } from "date-fns";
+import { getEffectiveTenantId } from "@/lib/tenant";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const tenantId = session.user.tenantId;
+  const tenantId = getEffectiveTenantId(req, session);
   if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);

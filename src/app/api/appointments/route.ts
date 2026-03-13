@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { getEffectiveTenantId } from "@/lib/tenant";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const tenantId = session.user.tenantId;
+  const tenantId = getEffectiveTenantId(req, session);
   if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
@@ -38,7 +39,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const tenantId = session.user.tenantId;
+  const tenantId = getEffectiveTenantId(req, session);
   if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
 
   const body = await req.json();
@@ -63,7 +64,6 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Update lead scheduledAt if linked
   if (body.leadId) {
     await prisma.lead.update({
       where: { id: body.leadId },

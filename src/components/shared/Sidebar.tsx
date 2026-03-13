@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Users,
@@ -56,11 +57,30 @@ const managementItems = [
   },
 ];
 
+function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const userRole = session?.user?.role ?? "";
   const tenantColor = session?.user?.tenantColor ?? "#0284c7";
+
+  // For SUPER_ADMIN: read the selected tenant name from cookie (set after clicking "Entrar")
+  const [impersonatedName, setImpersonatedName] = useState<string | null>(null);
+  const [impersonatedColor, setImpersonatedColor] = useState<string | null>(null);
+  useEffect(() => {
+    if (userRole === "SUPER_ADMIN") {
+      setImpersonatedName(readCookie("x-tenant-name"));
+      setImpersonatedColor(readCookie("x-tenant-color"));
+    }
+  }, [userRole]);
+
+  const displayColor   = impersonatedColor ?? tenantColor;
+  const displayTenant  = impersonatedName ?? session?.user?.tenantName ?? (userRole === "SUPER_ADMIN" ? "Super Admin" : "CRM Médico");
 
   function isActive(href: string) {
     return pathname === href || pathname.startsWith(`${href}/`);
@@ -73,13 +93,13 @@ export function Sidebar() {
         <Link href="/dashboard" className="flex items-center gap-3">
           <div
             className="w-8 h-8 rounded-lg flex items-center justify-center shadow-sm"
-            style={{ backgroundColor: tenantColor }}
+            style={{ backgroundColor: displayColor }}
           >
             <Stethoscope className="w-4 h-4 text-white" />
           </div>
           <div>
             <p className="text-sm font-bold text-slate-900 leading-tight">MedCrm Innove</p>
-            <p className="text-[10px] text-slate-400 font-medium">{session?.user?.tenantName ?? "CRM Médico"}</p>
+            <p className="text-[10px] text-slate-400 font-medium truncate max-w-[110px]">{displayTenant}</p>
           </div>
         </Link>
       </div>

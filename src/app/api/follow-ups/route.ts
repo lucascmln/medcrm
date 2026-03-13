@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { addDays } from "date-fns";
+import { getEffectiveTenantId } from "@/lib/tenant";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const tenantId = session.user.tenantId;
+  const tenantId = getEffectiveTenantId(req, session);
   if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const tenantId = session.user.tenantId;
+  const tenantId = getEffectiveTenantId(req, session);
   if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
 
   const body = await req.json();
@@ -68,12 +69,11 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const tenantId = session.user.tenantId;
+  const tenantId = getEffectiveTenantId(req, session);
   if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
 
   const twoDaysAgo = addDays(new Date(), -2);
 
-  // Find leads created more than 2 days ago with no appointment and no follow-up
   const leadsNeedingFollowUp = await prisma.lead.findMany({
     where: {
       tenantId,

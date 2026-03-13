@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Plus, Building2 } from "lucide-react";
+import { Plus, Building2, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { formatDate, cn } from "@/lib/utils";
@@ -28,6 +28,7 @@ export default function AdminPage() {
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [enteringId, setEnteringId] = useState<string | null>(null);
 
   const { register, handleSubmit, reset } = useForm<FormData>({ defaultValues: { primaryColor: "#0284c7" } });
 
@@ -38,8 +39,8 @@ export default function AdminPage() {
   }, [session, status, router]);
 
   const fetchTenants = useCallback(async () => {
-    const data = await fetch("/api/admin/tenants").then((r) => r.json());
-    setTenants(data);
+    const res = await fetch("/api/admin/tenants");
+    if (res.ok) setTenants(await res.json());
     setLoading(false);
   }, []);
 
@@ -68,6 +69,25 @@ export default function AdminPage() {
       fetchTenants();
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function enterTenant(tenant: Tenant) {
+    setEnteringId(tenant.id);
+    try {
+      const res = await fetch("/api/admin/select-tenant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId: tenant.id }),
+      });
+      if (!res.ok) {
+        setEnteringId(null);
+        return;
+      }
+      // Full page reload so all server components and cookies re-initialize correctly
+      window.location.href = "/dashboard";
+    } catch {
+      setEnteringId(null);
     }
   }
 
@@ -106,6 +126,7 @@ export default function AdminPage() {
                 <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide px-4 py-3">Leads</th>
                 <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide px-4 py-3">Status</th>
                 <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide px-4 py-3">Criado em</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -113,35 +134,66 @@ export default function AdminPage() {
                 Array.from({ length: 3 }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
                     <td className="px-4 py-3"><div className="h-8 bg-slate-100 rounded" /></td>
-                    <td colSpan={6} className="px-4 py-3"><div className="h-4 bg-slate-100 rounded" /></td>
+                    <td colSpan={7} className="px-4 py-3"><div className="h-4 bg-slate-100 rounded" /></td>
                   </tr>
                 ))
               ) : tenants.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center">
+                  <td colSpan={8} className="px-4 py-12 text-center">
                     <Building2 className="w-8 h-8 text-slate-200 mx-auto mb-2" />
                     <p className="text-sm text-slate-400">Nenhum tenant cadastrado</p>
                   </td>
                 </tr>
               ) : (
                 tenants.map((tenant) => (
-                  <tr key={tenant.id} className="hover:bg-slate-50">
+                  <tr
+                    key={tenant.id}
+                    className="hover:bg-slate-50 cursor-pointer transition-colors"
+                    onClick={() => enterTenant(tenant)}
+                  >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-lg" style={{ backgroundColor: `${tenant.primaryColor}20`, border: `2px solid ${tenant.primaryColor}40` }} />
-                        <span className="text-sm font-medium text-slate-900">{tenant.name}</span>
+                        <div
+                          className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: `${tenant.primaryColor}20`, border: `2px solid ${tenant.primaryColor}50` }}
+                        >
+                          <Building2 className="w-3.5 h-3.5" style={{ color: tenant.primaryColor }} />
+                        </div>
+                        <span className="text-sm font-semibold text-slate-900">{tenant.name}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3"><code className="text-xs bg-slate-100 px-2 py-0.5 rounded text-slate-600">{tenant.slug}</code></td>
-                    <td className="px-4 py-3"><span className="text-sm text-slate-600 capitalize">{tenant.plan}</span></td>
-                    <td className="px-4 py-3"><span className="text-sm font-medium text-slate-900">{tenant._count.users}</span></td>
-                    <td className="px-4 py-3"><span className="text-sm font-medium text-slate-900">{tenant._count.leads}</span></td>
                     <td className="px-4 py-3">
-                      <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full", tenant.isActive ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400")}>
+                      <code className="text-xs bg-slate-100 px-2 py-0.5 rounded text-slate-600">{tenant.slug}</code>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-slate-600 capitalize">{tenant.plan}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm font-medium text-slate-900">{tenant._count.users}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm font-medium text-slate-900">{tenant._count.leads}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full",
+                        tenant.isActive ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400")}>
                         {tenant.isActive ? "Ativo" : "Inativo"}
                       </span>
                     </td>
-                    <td className="px-4 py-3"><span className="text-sm text-slate-400">{formatDate(tenant.createdAt)}</span></td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-slate-400">{formatDate(tenant.createdAt)}</span>
+                    </td>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => enterTenant(tenant)}
+                        disabled={enteringId === tenant.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white rounded-lg transition-colors disabled:opacity-60"
+                        style={{ backgroundColor: tenant.primaryColor }}
+                      >
+                        <LogIn className="w-3.5 h-3.5" />
+                        {enteringId === tenant.id ? "Entrando..." : "Entrar"}
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
