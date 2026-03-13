@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
+import { format, subMonths, eachDayOfInterval } from "date-fns";
 import { differenceInHours } from "date-fns";
 
 export async function GET(req: NextRequest) {
@@ -15,30 +15,20 @@ export async function GET(req: NextRequest) {
   const type = searchParams.get("type") ?? "leads-by-channel";
   const startDateParam = searchParams.get("startDate");
   const endDateParam = searchParams.get("endDate");
-  const unitId = searchParams.get("unitId") || undefined;
 
   const startDate = startDateParam ? new Date(startDateParam) : subMonths(new Date(), 1);
   const endDate = endDateParam ? new Date(endDateParam + "T23:59:59") : new Date();
 
-  const where: any = {
-    tenantId,
-    createdAt: { gte: startDate, lte: endDate },
-  };
-  if (unitId) where.unitId = unitId;
+  const where: any = { tenantId, createdAt: { gte: startDate, lte: endDate } };
 
-  const leads = await prisma.lead.findMany({
-    where,
-    include: {
-      source: true,
-      campaign: true,
-      assignedTo: { select: { id: true, name: true } },
-      doctor: { select: { id: true, name: true } },
-      lossReason: { select: { id: true, name: true } },
-      funnelStage: true,
-    },
-  });
-
+  // ──────────────────────────────
+  // POR ORIGEM
+  // ──────────────────────────────
   if (type === "leads-by-channel") {
+    const leads = await prisma.lead.findMany({
+      where,
+      include: { source: true },
+    });
     const map = new Map<string, { name: string; color: string; total: number; closed: number; lost: number }>();
     for (const l of leads) {
       const key = l.sourceId ?? "unknown";
@@ -50,114 +40,111 @@ export async function GET(req: NextRequest) {
       if (l.closedAt) v.closed++;
       if (l.lostAt) v.lost++;
     }
-    const data = Array.from(map.values()).map((v) => ({
-      ...v,
-      conversionRate: v.total > 0 ? Math.round((v.closed / v.total) * 100) : 0,
-    })).sort((a, b) => b.total - a.total);
+    const data = Array.from(map.values())
+      .map((v) => ({ ...v, conversionRate: v.total > 0 ? Math.round((v.closed / v.total) * 100) : 0 }))
+      .sort((a, b) => b.total - a.total);
     return NextResponse.json({ data });
   }
 
-  if (type === "leads-by-campaign") {
-    const map = new Map<string, { name: string; total: number; closed: number }>();
-    for (const l of leads) {
-      const key = l.campaignId ?? "none";
-      const name = l.campaign?.name ?? "Sem campanha";
-      if (!map.has(key)) map.set(key, { name, total: 0, closed: 0 });
-      const v = map.get(key)!;
-      v.total++;
-      if (l.closedAt) v.closed++;
-    }
-    const data = Array.from(map.values()).map((v) => ({
-      ...v,
-      conversionRate: v.total > 0 ? Math.round((v.closed / v.total) * 100) : 0,
-    })).sort((a, b) => b.total - a.total);
+  // ──────────────────────────────
+  // POR STATUS (ETAPA)
+  // ──────────────────────────────
+  if (type === "leads-by-status") {
+    const stages = await prisma.funnelStage.findMany({ where: { tenantId }, orderBy: { order: "asc" } });
+    const counts = await prisma.lead.groupBy({
+      by: ["funnelStageId"],
+      where: { tenantId },
+      _count: true,
+    });
+    const countMap = new Map(counts.map((c) => [c.funnelStageId, c._count]));
+    const data = stages.map((s) => ({
+      name: s.name,
+      color: s.color,
+      total: countMap.get(s.id) ?? 0,
+    })).filter((s) => s.total > 0);
     return NextResponse.json({ data });
   }
 
-  if (type === "leads-by-attendant") {
-    const map = new Map<string, { name: string; total: number; closed: number; avgResponse: number; responseCount: number }>();
-    for (const l of leads) {
-      const key = l.assignedToId ?? "unassigned";
-      const name = l.assignedTo?.name ?? "Não atribuído";
-      if (!map.has(key)) map.set(key, { name, total: 0, closed: 0, avgResponse: 0, responseCount: 0 });
-      const v = map.get(key)!;
-      v.total++;
-      if (l.closedAt) v.closed++;
-      if (l.firstContactAt) {
-        v.avgResponse += differenceInHours(new Date(l.firstContactAt), new Date(l.createdAt));
-        v.responseCount++;
-      }
+  // ──────────────────────────────
+  // AGENDAMENTOS
+  // ──────────────────────────────
+  if (type === "appointments") {
+    const appointments = await prisma.appointment.findMany({
+      where: { tenantId, scheduledAt: { gte: startDate, lte: endDate } },
+      include: { lead: { select: { name: true } }, user: { select: { name: true } } },
+      orderBy: { scheduledAt: "desc" },
+    });
+
+    const byStatus = {
+      SCHEDULED: appointments.filter((a) => a.status === "SCHEDULED").length,
+      COMPLETED: appointments.filter((a) => a.status === "COMPLETED").length,
+      CANCELLED: appointments.filter((a) => a.status === "CANCELLED").length,
+      NO_SHOW: appointments.filter((a) => a.status === "NO_SHOW").length,
+    };
+
+    const data = appointments.map((a) => ({
+      name: a.title,
+      lead: a.lead?.name ?? "—",
+      date: format(new Date(a.scheduledAt), "dd/MM/yyyy HH:mm"),
+      status: a.status === "SCHEDULED" ? "Agendado" : a.status === "COMPLETED" ? "Compareceu" : a.status === "CANCELLED" ? "Cancelado" : "Não compareceu",
+      duration: `${a.duration}min`,
+    }));
+
+    return NextResponse.json({ data, summary: byStatus, total: appointments.length });
+  }
+
+  // ──────────────────────────────
+  // FOLLOW-UPS
+  // ──────────────────────────────
+  if (type === "follow-ups") {
+    const now = new Date();
+    const followUps = await prisma.followUp.findMany({
+      where: { tenantId, createdAt: { gte: startDate, lte: endDate } },
+      include: {
+        lead: { select: { name: true, funnelStage: { select: { name: true } } } },
+      },
+      orderBy: { dueAt: "asc" },
+    });
+
+    const summary = {
+      total: followUps.length,
+      pending: followUps.filter((f) => f.status === "PENDING").length,
+      completed: followUps.filter((f) => f.status === "COMPLETED").length,
+      overdue: followUps.filter((f) => f.status === "PENDING" && new Date(f.dueAt) < now).length,
+      auto: followUps.filter((f) => f.isAuto).length,
+    };
+
+    const data = followUps.map((f) => ({
+      name: f.lead.name,
+      etapa: f.lead.funnelStage?.name ?? "—",
+      dueAt: format(new Date(f.dueAt), "dd/MM/yyyy HH:mm"),
+      status: f.status === "PENDING" ? "Pendente" : f.status === "COMPLETED" ? "Concluído" : "Cancelado",
+      tipo: f.isAuto ? "Automático" : "Manual",
+    }));
+
+    return NextResponse.json({ data, summary });
+  }
+
+  // ──────────────────────────────
+  // VOLUME POR DIA
+  // ──────────────────────────────
+  if (type === "volume-by-day") {
+    const leads = await prisma.lead.findMany({ where, select: { createdAt: true, closedAt: true, lostAt: true } });
+
+    const days = eachDayOfInterval({ start: startDate, end: endDate });
+    const dayMap = new Map<string, { date: string; total: number; closed: number; lost: number }>();
+    for (const d of days) {
+      const key = format(d, "dd/MM");
+      dayMap.set(key, { date: key, total: 0, closed: 0, lost: 0 });
     }
-    const data = Array.from(map.values()).map((v) => ({
-      name: v.name,
-      total: v.total,
-      closed: v.closed,
-      conversionRate: v.total > 0 ? Math.round((v.closed / v.total) * 100) : 0,
-      avgResponseHours: v.responseCount > 0 ? Math.round(v.avgResponse / v.responseCount) : null,
-    })).sort((a, b) => b.total - a.total);
+    for (const l of leads) {
+      const key = format(new Date(l.createdAt), "dd/MM");
+      const d = dayMap.get(key);
+      if (d) { d.total++; if (l.closedAt) d.closed++; if (l.lostAt) d.lost++; }
+    }
+
+    const data = Array.from(dayMap.values());
     return NextResponse.json({ data });
-  }
-
-  if (type === "conversion-by-channel") {
-    const map = new Map<string, { name: string; color: string; total: number; scheduled: number; attended: number; closed: number; lost: number }>();
-    for (const l of leads) {
-      const key = l.sourceId ?? "unknown";
-      const name = l.source?.name ?? "Sem canal";
-      const color = l.source?.color ?? "#94a3b8";
-      if (!map.has(key)) map.set(key, { name, color, total: 0, scheduled: 0, attended: 0, closed: 0, lost: 0 });
-      const v = map.get(key)!;
-      v.total++;
-      if (l.scheduledAt) v.scheduled++;
-      if (l.attendedAt) v.attended++;
-      if (l.closedAt) v.closed++;
-      if (l.lostAt) v.lost++;
-    }
-    const data = Array.from(map.values()).map((v) => ({
-      ...v,
-      scheduledPct: v.total > 0 ? Math.round((v.scheduled / v.total) * 100) : 0,
-      attendedPct: v.total > 0 ? Math.round((v.attended / v.total) * 100) : 0,
-      closedPct: v.total > 0 ? Math.round((v.closed / v.total) * 100) : 0,
-      lostPct: v.total > 0 ? Math.round((v.lost / v.total) * 100) : 0,
-    })).sort((a, b) => b.total - a.total);
-    return NextResponse.json({ data });
-  }
-
-  if (type === "loss-reasons") {
-    const map = new Map<string, { name: string; count: number }>();
-    const total = leads.filter((l) => l.lostAt).length;
-    for (const l of leads) {
-      if (!l.lostAt) continue;
-      const key = l.lossReasonId ?? "unknown";
-      const name = l.lossReason?.name ?? "Não informado";
-      if (!map.has(key)) map.set(key, { name, count: 0 });
-      map.get(key)!.count++;
-    }
-    const data = Array.from(map.values()).map((v) => ({
-      ...v,
-      percentage: total > 0 ? Math.round((v.count / total) * 100) : 0,
-    })).sort((a, b) => b.count - a.count);
-    return NextResponse.json({ data, total });
-  }
-
-  if (type === "monthly-comparison") {
-    const months = [];
-    for (let i = 5; i >= 0; i--) {
-      const date = subMonths(new Date(), i);
-      const start = startOfMonth(date);
-      const end = endOfMonth(date);
-      const monthLeads = await prisma.lead.findMany({
-        where: { tenantId, createdAt: { gte: start, lte: end } },
-        select: { closedAt: true, lostAt: true, scheduledAt: true },
-      });
-      months.push({
-        month: format(date, "MMM/yy"),
-        total: monthLeads.length,
-        closed: monthLeads.filter((l) => l.closedAt).length,
-        lost: monthLeads.filter((l) => l.lostAt).length,
-        scheduled: monthLeads.filter((l) => l.scheduledAt).length,
-      });
-    }
-    return NextResponse.json({ data: months });
   }
 
   return NextResponse.json({ error: "Unknown report type" }, { status: 400 });

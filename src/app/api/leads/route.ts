@@ -53,6 +53,12 @@ export async function GET(req: NextRequest) {
     unit: { select: { id: true, name: true } },
     tags: { include: { tag: { select: { id: true, name: true, color: true } } } },
     campaign: { select: { id: true, name: true } },
+    followUps: {
+      where: { status: "PENDING" },
+      orderBy: { dueAt: "asc" as const },
+      take: 1,
+      select: { id: true, dueAt: true, status: true },
+    },
   };
 
   if (all) {
