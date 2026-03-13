@@ -13,33 +13,20 @@ import {
   Settings,
   LogOut,
   Stethoscope,
-  Radio,
   ChevronRight,
   ShieldCheck,
+  CalendarDays,
+  Bell,
 } from "lucide-react";
 import { cn, getInitials, avatarColor } from "@/lib/utils";
 
 const navItems = [
-  {
-    label: "Dashboard",
-    href: "/dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    label: "Leads",
-    href: "/leads",
-    icon: Users,
-  },
-  {
-    label: "Funil / Kanban",
-    href: "/kanban",
-    icon: Kanban,
-  },
-  {
-    label: "Relatórios",
-    href: "/reports",
-    icon: BarChart3,
-  },
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Leads", href: "/leads", icon: Users },
+  { label: "Funil / Kanban", href: "/kanban", icon: Kanban },
+  { label: "Agenda", href: "/agenda", icon: CalendarDays },
+  { label: "Follow-up", href: "/follow-up", icon: Bell },
+  { label: "Relatórios", href: "/reports", icon: BarChart3 },
 ];
 
 const managementItems = [
@@ -91,10 +78,8 @@ export function Sidebar() {
             <Stethoscope className="w-4 h-4 text-white" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-slate-900 leading-tight">
-              {session?.user?.tenantName ?? "MedCRM"}
-            </p>
-            <p className="text-[10px] text-slate-400 font-medium">CRM Médico</p>
+            <p className="text-sm font-bold text-slate-900 leading-tight">MedCrm Innove</p>
+            <p className="text-[10px] text-slate-400 font-medium">{session?.user?.tenantName ?? "CRM Médico"}</p>
           </div>
         </Link>
       </div>

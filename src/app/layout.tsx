@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MedCRM – Gestão de Leads para Clínicas",
+  title: "MedCrm Innove – Gestão de Leads para Clínicas",
   description: "Plataforma de CRM especializada para médicos e clínicas",
 };
 

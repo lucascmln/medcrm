@@ -4,6 +4,7 @@ import { Bell, Search } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export function Header() {
   const { data: session } = useSession();
@@ -34,10 +35,10 @@ export function Header() {
       </form>
 
       <div className="flex items-center gap-2">
-        <button className="relative p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+        <Link href="/follow-up" className="relative p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors inline-flex">
           <Bell className="w-4 h-4" />
           <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
-        </button>
+        </Link>
       </div>
     </header>
   );

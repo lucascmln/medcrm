@@ -65,7 +65,7 @@ function LeadCard({ lead, isDragging }: { lead: Lead; isDragging?: boolean }) {
           <span className="text-sm font-medium text-slate-900 truncate">{lead.name}</span>
         </div>
         {lead.slaBreached && (
-          <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" title="SLA vencido" />
+          <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" aria-label="SLA vencido" />
         )}
       </div>
 

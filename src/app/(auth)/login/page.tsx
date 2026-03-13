@@ -49,7 +49,7 @@ export default function LoginPage() {
         <div className="inline-flex items-center justify-center w-14 h-14 bg-primary-600 rounded-xl mb-4 shadow-lg shadow-primary-200">
           <Stethoscope className="w-7 h-7 text-white" />
         </div>
-        <h1 className="text-2xl font-bold text-slate-900">MedCRM</h1>
+        <h1 className="text-2xl font-bold text-slate-900">MedCrm Innove</h1>
         <p className="text-slate-500 text-sm mt-1">
           Gestão inteligente de leads para clínicas
         </p>
@@ -142,7 +142,7 @@ export default function LoginPage() {
       </div>
 
       <p className="text-center text-xs text-slate-400 mt-6">
-        © 2025 MedCRM. Todos os direitos reservados.
+        © 2026 MedCrm Innove. Todos os direitos reservados.
       </p>
     </div>
   );

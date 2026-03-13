@@ -8,7 +8,7 @@ datasource db {
 }
 
 // ========================
-// TENANT (cliente da plataforma)
+// TENANT
 // ========================
 model Tenant {
   id           String   @id @default(cuid())
@@ -21,17 +21,20 @@ model Tenant {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  users        User[]
-  units        Unit[]
-  doctors      Doctor[]
-  leads        Lead[]
-  leadSources  LeadSource[]
-  funnelStages FunnelStage[]
-  campaigns    Campaign[]
-  tags         Tag[]
-  lossReasons  LossReason[]
-  apiKeys      ApiKey[]
-  auditLogs    AuditLog[]
+  users         User[]
+  units         Unit[]
+  doctors       Doctor[]
+  leads         Lead[]
+  leadSources   LeadSource[]
+  funnelStages  FunnelStage[]
+  campaigns     Campaign[]
+  tags          Tag[]
+  lossReasons   LossReason[]
+  apiKeys       ApiKey[]
+  auditLogs     AuditLog[]
+  appointments  Appointment[]
+  followUps     FollowUp[]
+  webhookEvents WebhookEvent[]
 
   @@map("tenants")
 }
@@ -58,10 +61,11 @@ model User {
   leadHistory   LeadHistory[]
   leadNotes     LeadNote[]
   auditLogs     AuditLog[]
+  appointments  Appointment[]
+  followUps     FollowUp[]
 
   @@map("users")
 }
-
 
 // ========================
 // UNIDADES / CLÍNICAS
@@ -212,7 +216,7 @@ model LossReason {
 }
 
 // ========================
-// LEADS (entidade central)
+// LEADS
 // ========================
 model Lead {
   id             String    @id @default(cuid())
@@ -226,7 +230,6 @@ model Lead {
   campaignId     String?
   lossReasonId   String?
 
-  // Dados do lead
   name           String
   phone          String
   email          String?
@@ -234,18 +237,16 @@ model Lead {
   potentialValue Decimal?
   observations   String?
 
-  // Datas de evolução
-  firstContactAt DateTime?
-  scheduledAt    DateTime?
-  attendedAt     DateTime?
-  closedAt       DateTime?
-  lostAt         DateTime?
+  firstContactAt    DateTime?
+  scheduledAt       DateTime?
+  attendedAt        DateTime?
+  closedAt          DateTime?
+  lostAt            DateTime?
+  lastInteractionAt DateTime?
 
-  // SLA
-  slaBreached    Boolean   @default(false)
-
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  slaBreached Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   tenant      Tenant         @relation(fields: [tenantId], references: [id])
   unit        Unit?          @relation(fields: [unitId], references: [id])
@@ -259,6 +260,8 @@ model Lead {
   tags        LeadTag[]
   history     LeadHistory[]
   notes       LeadNote[]
+  appointments Appointment[]
+  followUps   FollowUp[]
 
   @@map("leads")
 }
@@ -314,6 +317,53 @@ model LeadNote {
 }
 
 // ========================
+// AGENDAMENTOS
+// ========================
+model Appointment {
+  id            String   @id @default(cuid())
+  tenantId      String
+  leadId        String?
+  userId        String?
+  title         String
+  notes         String?
+  scheduledAt   DateTime
+  duration      Int      @default(60)
+  status        String   @default("SCHEDULED")
+  googleEventId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  lead   Lead?  @relation(fields: [leadId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@map("appointments")
+}
+
+// ========================
+// FOLLOW-UPS
+// ========================
+model FollowUp {
+  id          String    @id @default(cuid())
+  tenantId    String
+  leadId      String
+  userId      String?
+  dueAt       DateTime
+  completedAt DateTime?
+  notes       String?
+  isAuto      Boolean   @default(false)
+  status      String    @default("PENDING")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  lead   Lead   @relation(fields: [leadId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@map("follow_ups")
+}
+
+// ========================
 // API KEYS (webhooks)
 // ========================
 model ApiKey {
@@ -328,6 +378,23 @@ model ApiKey {
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@map("api_keys")
+}
+
+// ========================
+// WEBHOOK EVENTS
+// ========================
+model WebhookEvent {
+  id          String    @id @default(cuid())
+  tenantId    String?
+  source      String
+  payload     String
+  status      String    @default("RECEIVED")
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@map("webhook_events")
 }
 
 // ========================
