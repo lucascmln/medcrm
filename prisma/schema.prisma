@@ -1,0 +1,351 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ========================
+// TENANT (cliente da plataforma)
+// ========================
+model Tenant {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  logo         String?
+  primaryColor String   @default("#0284c7")
+  plan         String   @default("starter")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  users        User[]
+  units        Unit[]
+  doctors      Doctor[]
+  leads        Lead[]
+  leadSources  LeadSource[]
+  funnelStages FunnelStage[]
+  campaigns    Campaign[]
+  tags         Tag[]
+  lossReasons  LossReason[]
+  apiKeys      ApiKey[]
+  auditLogs    AuditLog[]
+
+  @@map("tenants")
+}
+
+// ========================
+// USUÁRIOS
+// ========================
+model User {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  email     String   @unique
+  name      String
+  password  String
+  role      String   @default("ATTENDANT")
+  avatar    String?
+  isActive  Boolean  @default(true)
+  unitId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant        Tenant?       @relation(fields: [tenantId], references: [id])
+  unit          Unit?         @relation(fields: [unitId], references: [id])
+  assignedLeads Lead[]        @relation("AssignedTo")
+  leadHistory   LeadHistory[]
+  leadNotes     LeadNote[]
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+
+// ========================
+// UNIDADES / CLÍNICAS
+// ========================
+model Unit {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  address   String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  users   User[]
+  leads   Lead[]
+  doctors Doctor[]
+
+  @@map("units")
+}
+
+// ========================
+// MÉDICOS
+// ========================
+model Doctor {
+  id        String   @id @default(cuid())
+  tenantId  String
+  unitId    String?
+  name      String
+  crm       String?
+  specialty String?
+  phone     String?
+  email     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  unit   Unit?   @relation(fields: [unitId], references: [id])
+  leads  Lead[]
+
+  @@map("doctors")
+}
+
+// ========================
+// CANAIS DE ORIGEM
+// ========================
+model LeadSource {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  icon      String?
+  color     String?  @default("#64748b")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id])
+  subsources LeadSubsource[]
+  leads      Lead[]
+
+  @@map("lead_sources")
+}
+
+// ========================
+// SUBORIGENS
+// ========================
+model LeadSubsource {
+  id       String  @id @default(cuid())
+  sourceId String
+  name     String
+  isActive Boolean @default(true)
+
+  source LeadSource @relation(fields: [sourceId], references: [id])
+  leads  Lead[]
+
+  @@map("lead_subsources")
+}
+
+// ========================
+// ETAPAS DO FUNIL
+// ========================
+model FunnelStage {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  color     String   @default("#64748b")
+  order     Int
+  isDefault Boolean  @default(false)
+  isFinal   Boolean  @default(false)
+  isLost    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  leads  Lead[]
+
+  @@map("funnel_stages")
+}
+
+// ========================
+// CAMPANHAS
+// ========================
+model Campaign {
+  id        String    @id @default(cuid())
+  tenantId  String
+  name      String
+  channel   String?
+  budget    Decimal?
+  isActive  Boolean   @default(true)
+  startDate DateTime?
+  endDate   DateTime?
+  createdAt DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  leads  Lead[]
+
+  @@map("campaigns")
+}
+
+// ========================
+// TAGS
+// ========================
+model Tag {
+  id       String @id @default(cuid())
+  tenantId String
+  name     String
+  color    String @default("#64748b")
+
+  tenant Tenant    @relation(fields: [tenantId], references: [id])
+  leads  LeadTag[]
+
+  @@map("tags")
+}
+
+// ========================
+// MOTIVOS DE PERDA
+// ========================
+model LossReason {
+  id       String  @id @default(cuid())
+  tenantId String
+  name     String
+  isActive Boolean @default(true)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  leads  Lead[]
+
+  @@map("loss_reasons")
+}
+
+// ========================
+// LEADS (entidade central)
+// ========================
+model Lead {
+  id             String    @id @default(cuid())
+  tenantId       String
+  unitId         String?
+  doctorId       String?
+  assignedToId   String?
+  sourceId       String?
+  subsourceId    String?
+  funnelStageId  String
+  campaignId     String?
+  lossReasonId   String?
+
+  // Dados do lead
+  name           String
+  phone          String
+  email          String?
+  procedure      String?
+  potentialValue Decimal?
+  observations   String?
+
+  // Datas de evolução
+  firstContactAt DateTime?
+  scheduledAt    DateTime?
+  attendedAt     DateTime?
+  closedAt       DateTime?
+  lostAt         DateTime?
+
+  // SLA
+  slaBreached    Boolean   @default(false)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id])
+  unit        Unit?          @relation(fields: [unitId], references: [id])
+  doctor      Doctor?        @relation(fields: [doctorId], references: [id])
+  assignedTo  User?          @relation("AssignedTo", fields: [assignedToId], references: [id])
+  source      LeadSource?    @relation(fields: [sourceId], references: [id])
+  subsource   LeadSubsource? @relation(fields: [subsourceId], references: [id])
+  funnelStage FunnelStage    @relation(fields: [funnelStageId], references: [id])
+  campaign    Campaign?      @relation(fields: [campaignId], references: [id])
+  lossReason  LossReason?    @relation(fields: [lossReasonId], references: [id])
+  tags        LeadTag[]
+  history     LeadHistory[]
+  notes       LeadNote[]
+
+  @@map("leads")
+}
+
+// ========================
+// TAGS DE LEADS
+// ========================
+model LeadTag {
+  leadId String
+  tagId  String
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id])
+
+  @@id([leadId, tagId])
+  @@map("lead_tags")
+}
+
+// ========================
+// HISTÓRICO DE MOVIMENTAÇÃO
+// ========================
+model LeadHistory {
+  id          String   @id @default(cuid())
+  leadId      String
+  userId      String?
+  action      String
+  fromStage   String?
+  toStage     String?
+  description String?
+  createdAt   DateTime @default(now())
+
+  lead Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("lead_history")
+}
+
+// ========================
+// NOTAS / OBSERVAÇÕES
+// ========================
+model LeadNote {
+  id        String   @id @default(cuid())
+  leadId    String
+  userId    String?
+  content   String
+  isPrivate Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  lead Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("lead_notes")
+}
+
+// ========================
+// API KEYS (webhooks)
+// ========================
+model ApiKey {
+  id         String    @id @default(cuid())
+  tenantId   String
+  name       String
+  key        String    @unique
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("api_keys")
+}
+
+// ========================
+// AUDITORIA
+// ========================
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  metadata  String?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
