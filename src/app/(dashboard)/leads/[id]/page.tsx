@@ -11,6 +11,7 @@ import { StatusBadge, Badge } from "@/components/ui/badge";
 import { LeadFormModal } from "@/components/leads/LeadFormModal";
 import { Modal } from "@/components/ui/modal";
 import { formatDate, formatDateTime, formatPhone, formatCurrency, timeAgo, getInitials, avatarColor, cn } from "@/lib/utils";
+import { getTrafficSourceConfig } from "@/lib/traffic-source-ui";
 
 const ACTION_LABELS: Record<string, string> = {
   CREATED: "Lead criado",
@@ -39,17 +40,32 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [deleting, setDeleting] = useState(false);
 
   async function fetchLead() {
-    const res = await fetch(`/api/leads/${id}`);
-    const data = await res.json();
-    setLead(data);
-    setNewStageId(data.funnelStageId);
-    setLoading(false);
+    try {
+      const res = await fetch(`/api/leads/${id}`);
+      const data = await res.json();
+      if (!res.ok || data?.error) {
+        setLead(null);
+      } else {
+        setLead(data);
+        setNewStageId(data.funnelStageId ?? "");
+      }
+    } catch {
+      setLead(null);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
     fetchLead();
-    fetch("/api/funnel-stages").then((r) => r.json()).then(setStages);
-    fetch("/api/loss-reasons").then((r) => r.json()).then(setLossReasons);
+    fetch("/api/funnel-stages")
+      .then((r) => r.json())
+      .then((d) => setStages(Array.isArray(d) ? d : []))
+      .catch(() => {});
+    fetch("/api/loss-reasons")
+      .then((r) => r.json())
+      .then((d) => setLossReasons(Array.isArray(d) ? d : []))
+      .catch(() => {});
   }, [id]);
 
   async function submitNote() {
@@ -163,6 +179,14 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                       <AlertCircle className="w-3 h-3" /> SLA vencido
                     </span>
                   )}
+                  {lead.trafficSource && (() => {
+                    const ts = getTrafficSourceConfig(lead.trafficSource);
+                    return (
+                      <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full", ts.bg, ts.text)}>
+                        {ts.label}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm text-slate-500">
                   <span className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5" />{formatPhone(lead.phone)}</span>
@@ -301,6 +325,47 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             <StatRow label="Fechamento" value={lead.closedAt ? formatDateTime(lead.closedAt) : "—"} />
             {lead.lostAt && <StatRow label="Perda" value={formatDateTime(lead.lostAt)} warn />}
           </div>
+
+          {/* Tracking */}
+          {(lead.trafficSource || lead.utmSource || lead.gclid || lead.fbclid || lead.landingPage) && (
+            <div className="card p-4 space-y-3">
+              <h3 className="text-sm font-semibold text-slate-900">Rastreamento Digital</h3>
+              {lead.trafficSource && (() => {
+                const ts = getTrafficSourceConfig(lead.trafficSource);
+                return (
+                  <div>
+                    <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-1">Origem Classificada</p>
+                    <span className={cn("text-xs font-semibold px-2.5 py-1 rounded-full", ts.bg, ts.text)}>{ts.label}</span>
+                  </div>
+                );
+              })()}
+              <div className="space-y-1.5 pt-1">
+                {[
+                  ["utm_source",   lead.utmSource],
+                  ["utm_medium",   lead.utmMedium],
+                  ["utm_campaign", lead.utmCampaign],
+                  ["utm_content",  lead.utmContent],
+                  ["utm_term",     lead.utmTerm],
+                  ["gclid",        lead.gclid],
+                  ["fbclid",       lead.fbclid],
+                  ["fbc",          lead.fbc],
+                  ["fbp",          lead.fbp],
+                  ["referrer",     lead.referrer],
+                ].filter(([, v]) => v).map(([k, v]) => (
+                  <div key={k} className="flex gap-2 items-start">
+                    <span className="text-[10px] font-mono text-slate-400 flex-shrink-0 mt-0.5">{k}</span>
+                    <span className="text-[11px] text-slate-600 break-all">{v}</span>
+                  </div>
+                ))}
+                {lead.landingPage && (
+                  <div className="pt-1 border-t border-slate-100">
+                    <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-0.5">Landing Page</p>
+                    <p className="text-[11px] text-slate-600 break-all">{lead.landingPage}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

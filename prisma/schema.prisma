@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -21,20 +21,21 @@ model Tenant {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  users         User[]
-  units         Unit[]
-  doctors       Doctor[]
-  leads         Lead[]
-  leadSources   LeadSource[]
-  funnelStages  FunnelStage[]
-  campaigns     Campaign[]
-  tags          Tag[]
-  lossReasons   LossReason[]
-  apiKeys       ApiKey[]
-  auditLogs     AuditLog[]
-  appointments  Appointment[]
-  followUps     FollowUp[]
-  webhookEvents WebhookEvent[]
+  users              User[]
+  units              Unit[]
+  doctors            Doctor[]
+  leads              Lead[]
+  leadSources        LeadSource[]
+  funnelStages       FunnelStage[]
+  campaigns          Campaign[]
+  tags               Tag[]
+  lossReasons        LossReason[]
+  apiKeys            ApiKey[]
+  auditLogs          AuditLog[]
+  appointments       Appointment[]
+  followUps          FollowUp[]
+  webhookEvents      WebhookEvent[]
+  tenantIntegrations TenantIntegration[]
 
   @@map("tenants")
 }
@@ -242,9 +243,26 @@ model Lead {
   attendedAt        DateTime?
   closedAt          DateTime?
   lostAt            DateTime?
-  lastInteractionAt DateTime?
+  lastInteractionAt DateTime? @map("last_interaction_at")
 
   slaBreached Boolean  @default(false)
+
+  // ── UTM / tracking fields ─────────────────────────────────────────────────
+  utmSource    String?  @map("utm_source")
+  utmMedium    String?  @map("utm_medium")
+  utmCampaign  String?  @map("utm_campaign")
+  utmContent   String?  @map("utm_content")
+  utmTerm      String?  @map("utm_term")
+  landingPage  String?  @map("landing_page")
+  referrer     String?
+  gclid        String?
+  fbclid       String?
+  fbc          String?
+  fbp          String?
+  rawUrlParams String?  @map("raw_url_params")
+  // Classified traffic source (META_ADS | GOOGLE_ADS | BIO_LINK | GOOGLE_ORGANIC | DIRECT)
+  trafficSource String? @map("traffic_source")
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -383,18 +401,41 @@ model ApiKey {
 // ========================
 // WEBHOOK EVENTS
 // ========================
+// status: RECEIVED | PROCESSING | PROCESSED | ERROR | PENDING_GRAPH_API | PENDING_TENANT
 model WebhookEvent {
   id          String    @id @default(cuid())
   tenantId    String?
-  source      String
-  payload     String
+  source      String    // "meta-leads" | "whatsapp" | "leads-api"
+  payload     String    // raw JSON body
   status      String    @default("RECEIVED")
-  processedAt DateTime?
+  error       String?   // error message if processing failed
+  processedAt DateTime? @map("processed_at")
   createdAt   DateTime  @default(now())
 
   tenant Tenant? @relation(fields: [tenantId], references: [id])
 
   @@map("webhook_events")
+}
+
+// ========================
+// INTEGRAÇÕES DE TENANT
+// Mapeia page_id / phone_number_id ao tenant correto
+// ========================
+model TenantIntegration {
+  id         String   @id @default(cuid())
+  tenantId   String   @map("tenant_id")
+  provider   String   // "meta" | "whatsapp"
+  externalId String   @map("external_id")   // page_id (Meta) ou phone_number_id (WhatsApp)
+  label      String?  // nome amigável ex: "Página Clínica Bella"
+  config     String?  // JSON: access_token, form_id, número etc. (criptografar em produção)
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([provider, externalId])
+  @@map("tenant_integrations")
 }
 
 // ========================

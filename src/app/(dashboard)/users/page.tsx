@@ -31,13 +31,22 @@ export default function UsersPage() {
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>();
 
   const fetchUsers = useCallback(async () => {
-    const [u, un] = await Promise.all([
-      fetch("/api/users").then((r) => r.json()),
-      fetch("/api/units").then((r) => r.json()),
-    ]);
-    setUsers(u);
-    setUnits(un);
-    setLoading(false);
+    try {
+      const [uRes, unRes] = await Promise.all([
+        fetch("/api/users"),
+        fetch("/api/units"),
+      ]);
+      const [u, un] = await Promise.all([
+        uRes.ok ? uRes.json() : [],
+        unRes.ok ? unRes.json() : [],
+      ]);
+      setUsers(Array.isArray(u) ? u : []);
+      setUnits(Array.isArray(un) ? un : []);
+    } catch {
+      // network error — keep empty state
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);

@@ -25,9 +25,15 @@ export default function UnitsPage() {
   const { register, handleSubmit, reset } = useForm<FormData>();
 
   const fetchUnits = useCallback(async () => {
-    const data = await fetch("/api/units").then((r) => r.json());
-    setUnits(data);
-    setLoading(false);
+    try {
+      const res = await fetch("/api/units");
+      const data = res.ok ? await res.json() : [];
+      setUnits(Array.isArray(data) ? data : []);
+    } catch {
+      // network error — keep empty state
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { fetchUnits(); }, [fetchUnits]);
@@ -46,16 +52,18 @@ export default function UnitsPage() {
 
   async function onSubmit(data: FormData) {
     setSaving(true);
-    const url = editUnit ? `/api/units/${editUnit.id}` : "/api/units";
-    const method = editUnit ? "PUT" : "POST";
-    await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...data, address: data.address || null, phone: data.phone || null }),
-    });
-    setSaving(false);
-    setShowModal(false);
-    fetchUnits();
+    try {
+      const url = editUnit ? `/api/units/${editUnit.id}` : "/api/units";
+      const method = editUnit ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...data, address: data.address || null, phone: data.phone || null }),
+      });
+      if (res.ok) { setShowModal(false); fetchUnits(); }
+    } finally {
+      setSaving(false);
+    }
   }
 
   const inputClass = "w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500";

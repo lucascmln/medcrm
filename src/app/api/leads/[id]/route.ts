@@ -1,56 +1,65 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { getEffectiveTenantId } from "@/lib/tenant";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const session = await auth();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const tenantId = getEffectiveTenantId(req, session);
+    if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
 
-  const { id } = await params;
-  const lead = await prisma.lead.findFirst({
-    where: { id, tenantId: session.user.tenantId! },
-    include: {
-      funnelStage: true,
-      source: true,
-      subsource: true,
-      assignedTo: { select: { id: true, name: true, email: true } },
-      doctor: { select: { id: true, name: true, specialty: true } },
-      unit: { select: { id: true, name: true } },
-      campaign: { select: { id: true, name: true } },
-      lossReason: { select: { id: true, name: true } },
-      tags: { include: { tag: true } },
-      history: {
-        include: { user: { select: { id: true, name: true } } },
-        orderBy: { createdAt: "desc" },
+    const { id } = await params;
+    const lead = await prisma.lead.findFirst({
+      where: { id, tenantId },
+      include: {
+        funnelStage: true,
+        source: true,
+        subsource: true,
+        assignedTo: { select: { id: true, name: true, email: true } },
+        doctor:     { select: { id: true, name: true, specialty: true } },
+        unit:       { select: { id: true, name: true } },
+        campaign:   { select: { id: true, name: true } },
+        lossReason: { select: { id: true, name: true } },
+        tags:       { include: { tag: true } },
+        history: {
+          include: { user: { select: { id: true, name: true } } },
+          orderBy: { createdAt: "desc" },
+        },
+        notes: {
+          include: { user: { select: { id: true, name: true } } },
+          orderBy: { createdAt: "desc" },
+        },
       },
-      notes: {
-        include: { user: { select: { id: true, name: true } } },
-        orderBy: { createdAt: "desc" },
-      },
-    },
-  });
+    });
 
-  if (!lead) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json(lead);
+    if (!lead) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(lead);
+  } catch (err) {
+    console.error("GET /api/leads/[id] error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const { id } = await params;
   try {
+    const session = await auth();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const tenantId = getEffectiveTenantId(req, session);
+    if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
+
+    const { id } = await params;
     const body = await req.json();
     const { tagIds, ...data } = body;
 
     // Get current lead to track stage change
     const current = await prisma.lead.findFirst({
-      where: { id, tenantId: session.user.tenantId! },
+      where: { id, tenantId },
       include: { funnelStage: true },
     });
     if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    // Determine date fields based on new stage
     const updateData: any = { ...data };
     delete updateData.tagIds;
 
@@ -69,26 +78,23 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         }
         if (newStage.isFinal && !newStage.isLost && !current.closedAt) updateData.closedAt = new Date();
 
-        // History entry for stage change
         await prisma.leadHistory.create({
           data: {
-            leadId: id,
-            userId: session.user.id,
-            action: "STAGE_CHANGED",
-            fromStage: current.funnelStage.name,
-            toStage: newStage.name,
-            description: `Etapa alterada de "${current.funnelStage.name}" para "${newStage.name}"`,
+            leadId:      id,
+            userId:      session.user.id,
+            action:      "STAGE_CHANGED",
+            fromStage:   current.funnelStage?.name ?? "—",
+            toStage:     newStage.name,
+            description: `Etapa alterada de "${current.funnelStage?.name ?? "—"}" para "${newStage.name}"`,
           },
         });
       }
     }
 
-    // If assignedToId changed and no firstContactAt yet
     if (data.assignedToId && data.assignedToId !== current.assignedToId && !current.firstContactAt) {
       updateData.firstContactAt = new Date();
     }
 
-    // Handle tags
     if (tagIds !== undefined) {
       await prisma.leadTag.deleteMany({ where: { leadId: id } });
       if (tagIds.length > 0) {
@@ -100,15 +106,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const lead = await prisma.lead.update({
       where: { id },
-      data: updateData,
+      data:  updateData,
       include: {
         funnelStage: true,
-        source: true,
-        subsource: true,
-        assignedTo: { select: { id: true, name: true } },
-        doctor: { select: { id: true, name: true } },
-        unit: { select: { id: true, name: true } },
-        tags: { include: { tag: true } },
+        source:      true,
+        subsource:   true,
+        assignedTo:  { select: { id: true, name: true } },
+        doctor:      { select: { id: true, name: true } },
+        unit:        { select: { id: true, name: true } },
+        tags:        { include: { tag: true } },
       },
     });
 
@@ -120,13 +126,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const session = await auth();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const tenantId = getEffectiveTenantId(req, session);
+    if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
 
-  const { id } = await params;
-  const lead = await prisma.lead.findFirst({ where: { id, tenantId: session.user.tenantId! } });
-  if (!lead) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const { id } = await params;
+    const lead = await prisma.lead.findFirst({ where: { id, tenantId } });
+    if (!lead) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  await prisma.lead.delete({ where: { id } });
-  return NextResponse.json({ success: true });
+    await prisma.lead.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("DELETE /api/leads/[id] error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }

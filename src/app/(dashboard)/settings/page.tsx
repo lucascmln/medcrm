@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Save, Plus, Trash2, Copy, Check } from "lucide-react";
+import { Save, Plus, Trash2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useForm } from "react-hook-form";
+import { IntegrationSettings } from "@/components/settings/IntegrationSettings";
 
 const TABS = ["Geral", "Funil", "Canais", "Campanhas", "Tags", "Motivos de Perda", "Integrações"];
 
@@ -50,9 +51,14 @@ function GeneralSettings() {
   const { register, handleSubmit, reset } = useForm<{ name: string; primaryColor: string }>();
 
   useEffect(() => {
-    fetch("/api/settings").then((r) => r.json()).then((d) => {
-      reset({ name: d.name, primaryColor: d.primaryColor });
-    });
+    fetch("/api/settings")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d && typeof d === "object" && !d.error) {
+          reset({ name: d.name, primaryColor: d.primaryColor });
+        }
+      })
+      .catch(() => {});
   }, [reset]);
 
   async function onSubmit(data: any) {
@@ -92,10 +98,17 @@ function FunnelSettings() {
   const [stages, setStages] = useState<any[]>([]);
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState("#64748b");
+  const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/funnel-stages").then((r) => r.json()).then(setStages);
-  }, []);
+  function load() {
+    setLoadError(false);
+    fetch("/api/funnel-stages")
+      .then((r) => r.json())
+      .then((data) => setStages(Array.isArray(data) ? data : []))
+      .catch(() => setLoadError(true));
+  }
+
+  useEffect(() => { load(); }, []);
 
   async function addStage() {
     if (!newName.trim()) return;
@@ -104,14 +117,21 @@ function FunnelSettings() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newName, color: newColor, order: stages.length + 1 }),
     });
+    if (!res.ok) return;
     const stage = await res.json();
-    setStages([...stages, stage]);
+    if (stage?.id) setStages([...stages, stage]);
     setNewName("");
   }
 
   return (
     <div className="card p-5 max-w-lg space-y-4">
       <h3 className="text-sm font-semibold text-slate-900">Etapas do Funil</h3>
+      {loadError && (
+        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Não foi possível carregar as etapas.{" "}
+          <button onClick={load} className="underline font-medium">Tentar novamente</button>
+        </p>
+      )}
       <div className="space-y-2">
         {stages.map((s, i) => (
           <div key={s.id} className="flex items-center gap-3 p-2.5 bg-slate-50 rounded-lg">
@@ -124,6 +144,9 @@ function FunnelSettings() {
             </div>
           </div>
         ))}
+        {!loadError && stages.length === 0 && (
+          <p className="text-sm text-slate-400 text-center py-4">Nenhuma etapa configurada</p>
+        )}
       </div>
       <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
         <input
@@ -151,10 +174,17 @@ function ChannelSettings() {
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState("#64748b");
   const [newSubName, setNewSubName] = useState<Record<string, string>>({});
+  const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/lead-sources").then((r) => r.json()).then(setSources);
-  }, []);
+  function load() {
+    setLoadError(false);
+    fetch("/api/lead-sources")
+      .then((r) => r.json())
+      .then((data) => setSources(Array.isArray(data) ? data : []))
+      .catch(() => setLoadError(true));
+  }
+
+  useEffect(() => { load(); }, []);
 
   async function addSource() {
     if (!newName.trim()) return;
@@ -163,26 +193,34 @@ function ChannelSettings() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newName, color: newColor }),
     });
+    if (!res.ok) return;
     const src = await res.json();
-    setSources([...sources, src]);
+    if (src?.id) setSources([...sources, src]);
     setNewName("");
   }
 
   async function addSubsource(sourceId: string) {
     const name = newSubName[sourceId];
     if (!name?.trim()) return;
-    await fetch(`/api/lead-sources/${sourceId}/subsources`, {
+    const res = await fetch(`/api/lead-sources/${sourceId}/subsources`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
+    if (!res.ok) return;
     setNewSubName((prev) => ({ ...prev, [sourceId]: "" }));
-    fetch("/api/lead-sources").then((r) => r.json()).then(setSources);
+    load();
   }
 
   return (
     <div className="card p-5 max-w-lg space-y-4">
       <h3 className="text-sm font-semibold text-slate-900">Canais e Suborigens</h3>
+      {loadError && (
+        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Não foi possível carregar os canais.{" "}
+          <button onClick={load} className="underline font-medium">Tentar novamente</button>
+        </p>
+      )}
       {sources.map((src) => (
         <div key={src.id} className="border border-slate-200 rounded-xl p-3 space-y-2">
           <div className="flex items-center gap-2">
@@ -209,6 +247,9 @@ function ChannelSettings() {
           </div>
         </div>
       ))}
+      {!loadError && sources.length === 0 && (
+        <p className="text-sm text-slate-400 text-center py-4">Nenhum canal cadastrado</p>
+      )}
       <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
         <input type="color" value={newColor} onChange={(e) => setNewColor(e.target.value)} className="h-9 w-12 rounded-lg border border-slate-200 cursor-pointer" />
         <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Novo canal" className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500" onKeyDown={(e) => e.key === "Enter" && addSource()} />
@@ -221,19 +262,28 @@ function ChannelSettings() {
 function CampaignSettings() {
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const { register, handleSubmit, reset } = useForm<any>();
 
-  useEffect(() => { fetch("/api/campaigns").then((r) => r.json()).then(setCampaigns); }, []);
+  function load() {
+    setLoadError(false);
+    fetch("/api/campaigns")
+      .then((r) => r.json())
+      .then((data) => setCampaigns(Array.isArray(data) ? data : []))
+      .catch(() => setLoadError(true));
+  }
+
+  useEffect(() => { load(); }, []);
 
   async function onSubmit(data: any) {
-    await fetch("/api/campaigns", {
+    const res = await fetch("/api/campaigns", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
     reset();
     setShowForm(false);
-    fetch("/api/campaigns").then((r) => r.json()).then(setCampaigns);
+    if (res.ok) load();
   }
 
   return (
@@ -242,6 +292,12 @@ function CampaignSettings() {
         <h3 className="text-sm font-semibold text-slate-900">Campanhas</h3>
         <Button size="sm" onClick={() => setShowForm(!showForm)}><Plus className="w-3.5 h-3.5" /> Nova Campanha</Button>
       </div>
+      {loadError && (
+        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Não foi possível carregar as campanhas.{" "}
+          <button onClick={load} className="underline font-medium">Tentar novamente</button>
+        </p>
+      )}
       {showForm && (
         <form onSubmit={handleSubmit(onSubmit)} className="bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-200">
           <div className="grid grid-cols-2 gap-3">
@@ -262,7 +318,7 @@ function CampaignSettings() {
             <span className="text-xs text-slate-400">{c._count?.leads ?? 0} leads</span>
           </div>
         ))}
-        {campaigns.length === 0 && <p className="text-sm text-slate-400 text-center py-4">Nenhuma campanha cadastrada</p>}
+        {!loadError && campaigns.length === 0 && <p className="text-sm text-slate-400 text-center py-4">Nenhuma campanha cadastrada</p>}
       </div>
     </div>
   );
@@ -272,8 +328,17 @@ function TagSettings() {
   const [tags, setTags] = useState<any[]>([]);
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState("#6366f1");
+  const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => { fetch("/api/tags").then((r) => r.json()).then(setTags); }, []);
+  function load() {
+    setLoadError(false);
+    fetch("/api/tags")
+      .then((r) => r.json())
+      .then((data) => setTags(Array.isArray(data) ? data : []))
+      .catch(() => setLoadError(true));
+  }
+
+  useEffect(() => { load(); }, []);
 
   async function addTag() {
     if (!newName.trim()) return;
@@ -282,19 +347,26 @@ function TagSettings() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newName, color: newColor }),
     });
+    if (!res.ok) return;
     const tag = await res.json();
-    setTags([...tags, tag]);
+    if (tag?.id) setTags([...tags, tag]);
     setNewName("");
   }
 
   async function deleteTag(id: string) {
-    await fetch(`/api/tags?id=${id}`, { method: "DELETE" });
-    setTags(tags.filter((t) => t.id !== id));
+    const res = await fetch(`/api/tags?id=${id}`, { method: "DELETE" });
+    if (res.ok) setTags(tags.filter((t) => t.id !== id));
   }
 
   return (
     <div className="card p-5 max-w-lg space-y-4">
       <h3 className="text-sm font-semibold text-slate-900">Tags</h3>
+      {loadError && (
+        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Não foi possível carregar as tags.{" "}
+          <button onClick={load} className="underline font-medium">Tentar novamente</button>
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
         {tags.map((tag) => (
           <div key={tag.id} className="flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-full border text-xs font-medium" style={{ backgroundColor: `${tag.color}20`, color: tag.color, borderColor: `${tag.color}40` }}>
@@ -302,6 +374,7 @@ function TagSettings() {
             <button onClick={() => deleteTag(tag.id)} className="w-4 h-4 rounded-full hover:bg-black/10 flex items-center justify-center"><Trash2 className="w-2.5 h-2.5" /></button>
           </div>
         ))}
+        {!loadError && tags.length === 0 && <p className="text-sm text-slate-400 py-2">Nenhuma tag cadastrada</p>}
       </div>
       <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
         <input type="color" value={newColor} onChange={(e) => setNewColor(e.target.value)} className="h-9 w-12 rounded-lg border border-slate-200 cursor-pointer" />
@@ -315,8 +388,17 @@ function TagSettings() {
 function LossReasonSettings() {
   const [reasons, setReasons] = useState<any[]>([]);
   const [newName, setNewName] = useState("");
+  const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => { fetch("/api/loss-reasons").then((r) => r.json()).then(setReasons); }, []);
+  function load() {
+    setLoadError(false);
+    fetch("/api/loss-reasons")
+      .then((r) => r.json())
+      .then((data) => setReasons(Array.isArray(data) ? data : []))
+      .catch(() => setLoadError(true));
+  }
+
+  useEffect(() => { load(); }, []);
 
   async function addReason() {
     if (!newName.trim()) return;
@@ -325,14 +407,21 @@ function LossReasonSettings() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newName }),
     });
+    if (!res.ok) return;
     const reason = await res.json();
-    setReasons([...reasons, reason]);
+    if (reason?.id) setReasons([...reasons, reason]);
     setNewName("");
   }
 
   return (
     <div className="card p-5 max-w-lg space-y-4">
       <h3 className="text-sm font-semibold text-slate-900">Motivos de Perda</h3>
+      {loadError && (
+        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Não foi possível carregar os motivos.{" "}
+          <button onClick={load} className="underline font-medium">Tentar novamente</button>
+        </p>
+      )}
       <div className="space-y-2">
         {reasons.map((r) => (
           <div key={r.id} className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-lg">
@@ -340,7 +429,7 @@ function LossReasonSettings() {
             <span className="text-sm text-slate-700">{r.name}</span>
           </div>
         ))}
-        {reasons.length === 0 && <p className="text-sm text-slate-400 text-center py-2">Nenhum motivo cadastrado</p>}
+        {!loadError && reasons.length === 0 && <p className="text-sm text-slate-400 text-center py-2">Nenhum motivo cadastrado</p>}
       </div>
       <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
         <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Ex: Preço, Concorrente, Sem interesse..." className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500" onKeyDown={(e) => e.key === "Enter" && addReason()} />
@@ -350,63 +439,4 @@ function LossReasonSettings() {
   );
 }
 
-function IntegrationSettings() {
-  const [copied, setCopied] = useState(false);
-  const webhookUrl = typeof window !== "undefined" ? `${window.location.origin}/api/webhooks/leads` : "/api/webhooks/leads";
-
-  function copyUrl() {
-    navigator.clipboard.writeText(webhookUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  const examplePayload = JSON.stringify({
-    name: "Maria Silva",
-    phone: "11999990000",
-    email: "maria@email.com",
-    observations: "Interesse em rinoplastia",
-  }, null, 2);
-
-  return (
-    <div className="card p-5 max-w-2xl space-y-5">
-      <h3 className="text-sm font-semibold text-slate-900">Integrações via Webhook</h3>
-      <p className="text-sm text-slate-500">
-        Use o endpoint abaixo para receber leads automaticamente de formulários, landing pages e sistemas externos.
-      </p>
-
-      <div>
-        <label className="text-xs font-medium text-slate-600 block mb-2">URL do Webhook</label>
-        <div className="flex items-center gap-2">
-          <code className="flex-1 text-sm bg-slate-900 text-emerald-400 rounded-lg px-3 py-2 font-mono overflow-x-auto">
-            POST {webhookUrl}
-          </code>
-          <button onClick={copyUrl} className="p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500">
-            {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-          </button>
-        </div>
-      </div>
-
-      <div>
-        <label className="text-xs font-medium text-slate-600 block mb-2">Header de Autenticação</label>
-        <code className="block text-sm bg-slate-900 text-amber-400 rounded-lg px-3 py-2 font-mono">
-          X-API-Key: sua_chave_aqui
-        </code>
-      </div>
-
-      <div>
-        <label className="text-xs font-medium text-slate-600 block mb-2">Exemplo de Payload (JSON)</label>
-        <pre className="text-sm bg-slate-900 text-slate-300 rounded-lg px-3 py-3 font-mono overflow-x-auto">
-          {examplePayload}
-        </pre>
-      </div>
-
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <p className="text-sm text-blue-700">
-          <strong>Campos disponíveis:</strong> name*, phone*, email, sourceId, subsourceId, campaignId, observations
-          <br />
-          <span className="text-xs text-blue-500 mt-1 block">* obrigatórios · Solicite sua API Key ao administrador do sistema</span>
-        </p>
-      </div>
-    </div>
-  );
-}
+// IntegrationSettings is imported from @/components/settings/IntegrationSettings

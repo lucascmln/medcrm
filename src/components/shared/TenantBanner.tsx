@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { Building2, ArrowLeft } from "lucide-react";
 
 interface TenantInfo {
-  id: string;
   name: string;
   color: string;
 }
@@ -26,11 +25,11 @@ export function TenantBanner() {
       setTenant(null);
       return;
     }
-    const id    = readCookie("x-tenant-id");
+    // x-tenant-id is httpOnly — use x-tenant-name as the impersonation signal
     const name  = readCookie("x-tenant-name");
     const color = readCookie("x-tenant-color");
-    if (id && name) {
-      setTenant({ id, name, color: color ?? "#0284c7" });
+    if (name) {
+      setTenant({ name, color: color ?? "#0284c7" });
     } else {
       setTenant(null);
     }

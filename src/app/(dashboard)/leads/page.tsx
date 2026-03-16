@@ -14,6 +14,7 @@ import { useForm } from "react-hook-form";
 import { formatDate, formatPhone, getInitials, avatarColor, cn } from "@/lib/utils";
 import { format, parseISO, isPast, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { getTrafficSourceConfig, TRAFFIC_SOURCE_CONFIG, type TrafficSourceKey } from "@/lib/traffic-source-ui";
 
 interface FollowUpItem { id: string; dueAt: string; status: string }
 interface Lead {
@@ -22,11 +23,11 @@ interface Lead {
   lastInteractionAt?: string;
   funnelStage: { id: string; name: string; color: string };
   source?: { id: string; name: string; color: string };
+  trafficSource?: string | null;
   followUps?: FollowUpItem[];
 }
 
 interface FunnelStage { id: string; name: string; color: string }
-interface LeadSource { id: string; name: string }
 
 function nextFollowUpLabel(followUps?: FollowUpItem[]) {
   const next = followUps?.[0];
@@ -50,12 +51,11 @@ export default function LeadsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [stageId, setStageId] = useState("");
-  const [sourceId, setSourceId] = useState("");
+  const [trafficSource, setTrafficSource] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [showModal, setShowModal] = useState(false);
 
   const [stages, setStages] = useState<FunnelStage[]>([]);
-  const [sources, setSources] = useState<LeadSource[]>([]);
 
   // Quick action modals
   const [quickFULead, setQuickFULead] = useState<Lead | null>(null);
@@ -72,9 +72,12 @@ export default function LeadsPage() {
       const params = new URLSearchParams({ page: String(page), limit: "25" });
       if (search) params.set("search", search);
       if (stageId) params.set("stageId", stageId);
-      if (sourceId) params.set("sourceId", sourceId);
+      if (trafficSource) params.set("trafficSource", trafficSource);
       const res = await fetch(`/api/leads?${params}`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        console.error("[leads] API error", res.status, await res.text().catch(() => ""));
+        return;
+      }
       const json = await res.json();
       setLeads(json.leads ?? []);
       setTotal(json.total ?? 0);
@@ -82,17 +85,13 @@ export default function LeadsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, stageId, sourceId]);
+  }, [page, search, stageId, trafficSource]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/funnel-stages").then((r) => r.json()),
-      fetch("/api/lead-sources").then((r) => r.json()),
-    ]).then(([s, src]) => {
+    fetch("/api/funnel-stages").then((r) => r.json()).then((s) => {
       setStages(Array.isArray(s) ? s : []);
-      setSources(Array.isArray(src) ? src : []);
     });
   }, []);
 
@@ -103,20 +102,51 @@ export default function LeadsPage() {
   }
 
   async function exportCSV() {
-    const res = await fetch("/api/leads?all=true");
+    // Pass all active filters so the export matches exactly what's on screen
+    const params = new URLSearchParams({ all: "true" });
+    if (search)        params.set("search", search);
+    if (stageId)       params.set("stageId", stageId);
+    if (trafficSource) params.set("trafficSource", trafficSource);
+
+    const res  = await fetch(`/api/leads?${params}`);
     const json = await res.json();
+    const list: Lead[] = json.leads ?? [];
+
+    if (!list.length) {
+      alert("Nenhum lead encontrado com os filtros atuais. Ajuste os filtros e tente novamente.");
+      return;
+    }
+
     const rows = [
-      ["Nome", "Telefone", "Canal", "Etapa", "Procedimento", "Data"],
-      ...(json.leads ?? []).map((l: Lead) => [
-        l.name, l.phone, l.source?.name ?? "", l.funnelStage.name,
-        l.procedure ?? "", new Date(l.createdAt).toLocaleDateString("pt-BR"),
+      ["Nome", "Telefone", "E-mail", "Canal", "Etapa", "Procedimento", "Entrada"],
+      ...list.map((l) => [
+        l.name,
+        l.phone,
+        l.email ?? "",
+        l.trafficSource ? getTrafficSourceConfig(l.trafficSource).label : (l.source?.name ?? ""),
+        l.funnelStage.name,
+        l.procedure ?? "",
+        new Date(l.createdAt).toLocaleDateString("pt-BR"),
       ]),
     ];
-    const csv = rows.map((r) => r.map((c: unknown) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `leads-${new Date().toISOString().split("T")[0]}.csv`;
+
+    // Build a descriptive filename reflecting active filters
+    const parts = ["leads"];
+    if (stageId) {
+      const stageName = stages.find((s) => s.id === stageId)?.name;
+      if (stageName) parts.push(stageName.toLowerCase().replace(/[\s/]+/g, "-"));
+    }
+    if (trafficSource) {
+      parts.push(trafficSource.toLowerCase().replace(/_/g, "-"));
+    }
+    parts.push(new Date().toISOString().split("T")[0]);
+
+    // \uFEFF = UTF-8 BOM so Excel opens accented chars correctly
+    const csv  = rows.map((r) => r.map((c: unknown) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const a    = document.createElement("a");
+    a.href     = URL.createObjectURL(blob);
+    a.download = `${parts.join("-")}.csv`;
     a.click();
   }
 
@@ -144,7 +174,7 @@ export default function LeadsPage() {
     fetchLeads();
   }
 
-  const activeFilters = [stageId, sourceId].filter(Boolean).length;
+  const activeFilters = [stageId, trafficSource].filter(Boolean).length;
 
   return (
     <div className="p-6 space-y-4">
@@ -155,7 +185,7 @@ export default function LeadsPage() {
           <p className="text-sm text-slate-500 mt-0.5">{total} lead{total !== 1 ? "s" : ""}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={exportCSV}>
+          <Button variant="secondary" size="sm" onClick={exportCSV} disabled={total === 0}>
             <Download className="w-3.5 h-3.5" /> CSV
           </Button>
           <Button onClick={() => setShowModal(true)}>
@@ -194,15 +224,17 @@ export default function LeadsPage() {
           </div>
           <div>
             <label className="text-xs font-medium text-slate-500 block mb-1">Canal</label>
-            <select value={sourceId} onChange={(e) => { setSourceId(e.target.value); setPage(1); }}
+            <select value={trafficSource} onChange={(e) => { setTrafficSource(e.target.value); setPage(1); }}
               className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500">
               <option value="">Todos</option>
-              {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {(Object.entries(TRAFFIC_SOURCE_CONFIG) as [TrafficSourceKey, typeof TRAFFIC_SOURCE_CONFIG[TrafficSourceKey]][]).map(([key, cfg]) => (
+                <option key={key} value={key}>{cfg.label}</option>
+              ))}
             </select>
           </div>
           <div className="flex items-end">
             {activeFilters > 0 && (
-              <button onClick={() => { setStageId(""); setSourceId(""); setPage(1); }}
+              <button onClick={() => { setStageId(""); setTrafficSource(""); setPage(1); }}
                 className="text-xs text-slate-500 hover:text-red-500 underline">Limpar filtros</button>
             )}
           </div>
@@ -263,9 +295,21 @@ export default function LeadsPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        {lead.source ? (
-                          <span className="text-sm text-slate-600">{lead.source.name}</span>
-                        ) : <span className="text-slate-300 text-sm">—</span>}
+                        <div className="space-y-0.5">
+                          {lead.trafficSource ? (() => {
+                            const ts = getTrafficSourceConfig(lead.trafficSource);
+                            return (
+                              <span className={cn("block text-xs font-medium px-1.5 py-0.5 rounded w-fit", ts.bg, ts.text)}>
+                                {ts.label}
+                              </span>
+                            );
+                          })() : lead.source ? (
+                            <span className="text-sm text-slate-600">{lead.source.name}</span>
+                          ) : <span className="text-slate-300 text-sm">—</span>}
+                          {lead.trafficSource && lead.source && (
+                            <span className="block text-[10px] text-slate-400">{lead.source.name}</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3"><StatusBadge stage={lead.funnelStage} /></td>
                       <td className="px-4 py-3">

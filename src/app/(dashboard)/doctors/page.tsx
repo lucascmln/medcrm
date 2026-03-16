@@ -30,13 +30,22 @@ export default function DoctorsPage() {
   const { register, handleSubmit, reset } = useForm<FormData>();
 
   const fetchDoctors = useCallback(async () => {
-    const [d, u] = await Promise.all([
-      fetch("/api/doctors").then((r) => r.json()),
-      fetch("/api/units").then((r) => r.json()),
-    ]);
-    setDoctors(d);
-    setUnits(u);
-    setLoading(false);
+    try {
+      const [dRes, uRes] = await Promise.all([
+        fetch("/api/doctors"),
+        fetch("/api/units"),
+      ]);
+      const [d, u] = await Promise.all([
+        dRes.ok ? dRes.json() : [],
+        uRes.ok ? uRes.json() : [],
+      ]);
+      setDoctors(Array.isArray(d) ? d : []);
+      setUnits(Array.isArray(u) ? u : []);
+    } catch {
+      // network error — keep empty state
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { fetchDoctors(); }, [fetchDoctors]);

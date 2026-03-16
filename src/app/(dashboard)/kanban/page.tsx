@@ -198,14 +198,21 @@ export default function KanbanPage() {
     const lead = leads.find((l) => l.id === leadId);
     if (!lead || lead.funnelStageId === targetStageId) return;
 
+    const previousStageId = lead.funnelStageId;
+
     // Optimistic update
     setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, funnelStageId: targetStageId } : l));
 
-    await fetch(`/api/leads/${leadId}`, {
+    const res = await fetch(`/api/leads/${leadId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ funnelStageId: targetStageId }),
     });
+
+    // Rollback if the server rejected the update
+    if (!res.ok) {
+      setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, funnelStageId: previousStageId } : l));
+    }
   }
 
   if (loading) {

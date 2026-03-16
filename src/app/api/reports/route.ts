@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { format, subMonths, eachDayOfInterval } from "date-fns";
 import { differenceInHours } from "date-fns";
 import { getEffectiveTenantId } from "@/lib/tenant";
+import { TRAFFIC_SOURCE_CONFIG, type TrafficSourceKey } from "@/lib/traffic-source-ui";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -26,16 +27,12 @@ export async function GET(req: NextRequest) {
   // POR ORIGEM
   // ──────────────────────────────
   if (type === "leads-by-channel") {
-    const leads = await prisma.lead.findMany({
-      where,
-      include: { source: true },
-    });
+    const leads = await prisma.lead.findMany({ where, select: { trafficSource: true, closedAt: true, lostAt: true } });
     const map = new Map<string, { name: string; color: string; total: number; closed: number; lost: number }>();
     for (const l of leads) {
-      const key = l.sourceId ?? "unknown";
-      const name = l.source?.name ?? "Sem canal";
-      const color = l.source?.color ?? "#94a3b8";
-      if (!map.has(key)) map.set(key, { name, color, total: 0, closed: 0, lost: 0 });
+      const key = (l.trafficSource ?? "DIRECT") as TrafficSourceKey;
+      const cfg = TRAFFIC_SOURCE_CONFIG[key] ?? TRAFFIC_SOURCE_CONFIG.DIRECT;
+      if (!map.has(key)) map.set(key, { name: cfg.label, color: cfg.color, total: 0, closed: 0, lost: 0 });
       const v = map.get(key)!;
       v.total++;
       if (l.closedAt) v.closed++;
@@ -145,6 +142,43 @@ export async function GET(req: NextRequest) {
     }
 
     const data = Array.from(dayMap.values());
+    return NextResponse.json({ data });
+  }
+
+  // ──────────────────────────────
+  // ORIGEM DO TRÁFEGO
+  // ──────────────────────────────
+  if (type === "traffic-source") {
+    const leads = await prisma.lead.findMany({
+      where,
+      select: { trafficSource: true, closedAt: true, lostAt: true, utmSource: true, utmMedium: true, utmCampaign: true },
+    });
+
+    const SOURCE_LABELS: Record<string, string> = {
+      META_ADS: "Meta Ads", GOOGLE_ADS: "Google Ads", BIO_LINK: "Link na Bio",
+      GOOGLE_ORGANIC: "Google Orgânico", DIRECT: "Direto",
+    };
+    const SOURCE_COLORS: Record<string, string> = {
+      META_ADS: "#1877F2", GOOGLE_ADS: "#EA4335", BIO_LINK: "#8B5CF6",
+      GOOGLE_ORGANIC: "#10B981", DIRECT: "#94A3B8",
+    };
+
+    const map = new Map<string, { name: string; color: string; total: number; closed: number; lost: number }>();
+    for (const l of leads) {
+      const key = (l as any).trafficSource ?? "DIRECT";
+      const name = SOURCE_LABELS[key] ?? key;
+      const color = SOURCE_COLORS[key] ?? "#94A3B8";
+      if (!map.has(key)) map.set(key, { name, color, total: 0, closed: 0, lost: 0 });
+      const v = map.get(key)!;
+      v.total++;
+      if (l.closedAt) v.closed++;
+      if (l.lostAt) v.lost++;
+    }
+
+    const data = Array.from(map.values())
+      .map((v) => ({ ...v, conversionRate: v.total > 0 ? Math.round((v.closed / v.total) * 100) : 0 }))
+      .sort((a, b) => b.total - a.total);
+
     return NextResponse.json({ data });
   }
 

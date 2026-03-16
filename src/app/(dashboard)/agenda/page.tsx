@@ -81,13 +81,24 @@ export default function AgendaPage() {
     if (filterDate) { params.set("startDate", filterDate); params.set("endDate", filterDate); }
     if (filterStatus) params.set("status", filterStatus);
 
-    const [apptRes, leadsRes] = await Promise.all([
-      fetch(`/api/appointments?${params}`),
-      fetch("/api/leads?all=true"),
-    ]);
-    if (apptRes.ok) setAppointments(await apptRes.json());
-    if (leadsRes.ok) { const d = await leadsRes.json(); setLeads(d.leads ?? []); }
-    setLoading(false);
+    try {
+      const [apptRes, leadsRes] = await Promise.all([
+        fetch(`/api/appointments?${params}`),
+        fetch("/api/leads?all=true"),
+      ]);
+      if (apptRes.ok) {
+        const d = await apptRes.json();
+        setAppointments(Array.isArray(d) ? d : []);
+      }
+      if (leadsRes.ok) {
+        const d = await leadsRes.json();
+        setLeads(Array.isArray(d.leads) ? d.leads : []);
+      }
+    } catch {
+      // network error — keep empty state
+    } finally {
+      setLoading(false);
+    }
   }, [filterDate, filterStatus]);
 
   useEffect(() => { fetchData(); }, [fetchData]);

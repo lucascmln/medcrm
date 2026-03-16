@@ -5,12 +5,15 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend, LineChart, Line,
 } from "recharts";
-import { Download, BarChart2, Calendar, Bell, TrendingUp, Radio } from "lucide-react";
+import { Download, BarChart2, Calendar, Bell, TrendingUp, Radio, Zap, Link } from "lucide-react";
+import { getTrafficSourceConfig } from "@/lib/traffic-source-ui";
+import { classifyTrafficSource } from "@/lib/tracking";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const TABS = [
   { id: "leads-by-channel", label: "Por Origem", icon: Radio },
+  { id: "traffic-source", label: "Tráfego", icon: Zap },
   { id: "leads-by-status", label: "Por Status", icon: BarChart2 },
   { id: "appointments", label: "Agendamentos", icon: Calendar },
   { id: "follow-ups", label: "Follow-ups", icon: Bell },
@@ -38,6 +41,10 @@ export default function ReportsPage() {
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
 
+  // URL classifier tester state
+  const [testUrl, setTestUrl] = useState("");
+  const [testResult, setTestResult] = useState<{ label: string; bg: string; text: string } | null>(null);
+
   const fetchReport = useCallback(async () => {
     setLoading(true);
     setSummary(null);
@@ -58,15 +65,17 @@ export default function ReportsPage() {
     if (!data.length) return;
     const keys = Object.keys(data[0]).filter((k) => k !== "color");
     const rows = [keys.map((k) => COL_LABELS[k] ?? k), ...data.map((r) => keys.map((k) => r[k] ?? ""))];
-    const csv = rows.map((r) => r.map((c: any) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `${tab}-${new Date().toISOString().split("T")[0]}.csv`;
+    // \uFEFF = UTF-8 BOM so Excel opens accented chars correctly
+    const csv  = rows.map((r) => r.map((c: any) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const a    = document.createElement("a");
+    a.href     = URL.createObjectURL(blob);
+    // Filename includes the active tab and date range so files don't collide
+    a.download = `relatorio-${tab}-${startDate}-${endDate}.csv`;
     a.click();
   }
 
-  const showBar = ["leads-by-channel", "leads-by-status", "volume-by-day"].includes(tab);
+  const showBar = ["leads-by-channel", "traffic-source", "leads-by-status", "volume-by-day"].includes(tab);
   const showPie = tab === "leads-by-status";
   const showLine = tab === "volume-by-day";
   const showTable = ["appointments", "follow-ups"].includes(tab);
@@ -114,6 +123,65 @@ export default function ReportsPage() {
           );
         })}
       </div>
+
+      {/* URL classifier tester — visible only on Tráfego tab */}
+      {tab === "traffic-source" && (
+        <div className="card p-4">
+          <h3 className="text-sm font-semibold text-slate-900 mb-1 flex items-center gap-2">
+            <Link className="w-4 h-4 text-slate-400" /> Testar Classificação de Origem
+          </h3>
+          <p className="text-xs text-slate-400 mb-3">Cole uma URL com parâmetros UTM para ver como ela seria classificada.</p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={testUrl}
+              onChange={(e) => {
+                setTestUrl(e.target.value);
+                setTestResult(null);
+              }}
+              placeholder="https://site.com/?utm_source=facebook&utm_medium=paid_social&fbclid=..."
+              className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+            <button
+              onClick={() => {
+                if (!testUrl) return;
+                try {
+                  const url = new URL(testUrl);
+                  const params = Object.fromEntries(url.searchParams.entries());
+                  const classified = classifyTrafficSource({
+                    utmSource: params.utm_source ?? null,
+                    utmMedium: params.utm_medium ?? null,
+                    utmCampaign: params.utm_campaign ?? null,
+                    utmContent: params.utm_content ?? null,
+                    utmTerm: params.utm_term ?? null,
+                    landingPage: testUrl,
+                    referrer: null,
+                    gclid: params.gclid ?? null,
+                    fbclid: params.fbclid ?? null,
+                    fbc: params.fbc ?? null,
+                    fbp: params.fbp ?? null,
+                    rawUrlParams: url.search.slice(1) || null,
+                  });
+                  setTestResult(getTrafficSourceConfig(classified));
+                } catch {
+                  setTestResult(getTrafficSourceConfig("DIRECT"));
+                }
+              }}
+              className="px-4 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+            >
+              Classificar
+            </button>
+          </div>
+          {testResult && (
+            <div className="mt-3 flex items-center gap-2">
+              <span className="text-xs text-slate-500">Resultado:</span>
+              <span className={cn("text-sm font-semibold px-3 py-1 rounded-full", testResult.bg, testResult.text)}>
+                {testResult.label}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="card p-12 flex justify-center">
@@ -207,7 +275,8 @@ export default function ReportsPage() {
           ) : showBar && !showLine && !showPie ? (
             <div className="card p-5">
               <h3 className="text-sm font-semibold text-slate-900 mb-4">
-                {tab === "leads-by-channel" ? "Leads por Canal de Origem" : "Volume"}
+                {tab === "leads-by-channel" ? "Leads por Canal de Origem" :
+                 tab === "traffic-source" ? "Leads por Origem de Tráfego" : "Volume"}
               </h3>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 40 }}>
@@ -218,7 +287,7 @@ export default function ReportsPage() {
                   <Bar dataKey="total" name="Total" radius={[4, 4, 0, 0]}>
                     {data.map((d, i) => <Cell key={i} fill={d.color ?? COLORS[i % COLORS.length]} />)}
                   </Bar>
-                  {tab === "leads-by-channel" && <Bar dataKey="closed" name="Fechados" fill="#10b981" radius={[4, 4, 0, 0]} />}
+                  {(tab === "leads-by-channel" || tab === "traffic-source") && <Bar dataKey="closed" name="Fechados" fill="#10b981" radius={[4, 4, 0, 0]} />}
                 </BarChart>
               </ResponsiveContainer>
             </div>

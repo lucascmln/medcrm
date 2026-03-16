@@ -9,3 +9,12 @@ dist
 build
 *.log
 .DS_Store
+# SQLite dev database — not for version control
+prisma/dev.db
+prisma/dev.db-journal
+prisma/dev.db-shm
+prisma/dev.db-wal
+# TypeScript build cache
+tsconfig.tsbuildinfo
+# Claude Code memory
+.claude/

@@ -6,11 +6,10 @@ function isSuperAdmin(session: { user?: { role?: string } } | null): boolean {
   return session?.user?.role === "SUPER_ADMIN";
 }
 
-const COOKIE_OPTS = {
-  path: "/",
-  sameSite: "lax" as const,
-  httpOnly: false, // must be false so the client can read them for the TenantBanner
-};
+// x-tenant-id is httpOnly (server-only, read via middleware/API).
+// x-tenant-name and x-tenant-color are readable by JS for the TenantBanner UI.
+const COOKIE_OPTS_SECURE = { path: "/", sameSite: "lax" as const, httpOnly: true  };
+const COOKIE_OPTS_UI     = { path: "/", sameSite: "lax" as const, httpOnly: false };
 
 // GET — returns the currently selected tenant (so the banner can hydrate on SSR)
 export async function GET(req: NextRequest) {
@@ -49,9 +48,10 @@ export async function POST(req: NextRequest) {
   if (!tenant) return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
 
   const res = NextResponse.json({ tenant });
-  res.cookies.set("x-tenant-id",    tenant.id, COOKIE_OPTS);
-  res.cookies.set("x-tenant-name",  encodeURIComponent(tenant.name), COOKIE_OPTS);
-  res.cookies.set("x-tenant-color", encodeURIComponent(tenant.primaryColor ?? "#0284c7"), COOKIE_OPTS);
+  // Store raw values — the cookies library handles encoding. Never double-encode.
+  res.cookies.set("x-tenant-id",    tenant.id,                       COOKIE_OPTS_SECURE);
+  res.cookies.set("x-tenant-name",  tenant.name,                     COOKIE_OPTS_UI);
+  res.cookies.set("x-tenant-color", tenant.primaryColor ?? "#0284c7", COOKIE_OPTS_UI);
   return res;
 }
 

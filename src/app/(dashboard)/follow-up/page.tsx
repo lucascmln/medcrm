@@ -74,13 +74,24 @@ export default function FollowUpPage() {
     const params = new URLSearchParams();
     if (filterStatus) params.set("status", filterStatus);
 
-    const [fuRes, leadsRes] = await Promise.all([
-      fetch(`/api/follow-ups?${params}`),
-      fetch("/api/leads?all=true"),
-    ]);
-    if (fuRes.ok) setFollowUps(await fuRes.json());
-    if (leadsRes.ok) { const d = await leadsRes.json(); setLeads(d.leads ?? []); }
-    setLoading(false);
+    try {
+      const [fuRes, leadsRes] = await Promise.all([
+        fetch(`/api/follow-ups?${params}`),
+        fetch("/api/leads?all=true"),
+      ]);
+      if (fuRes.ok) {
+        const d = await fuRes.json();
+        setFollowUps(Array.isArray(d) ? d : []);
+      }
+      if (leadsRes.ok) {
+        const d = await leadsRes.json();
+        setLeads(Array.isArray(d.leads) ? d.leads : []);
+      }
+    } catch {
+      // network error — keep empty state
+    } finally {
+      setLoading(false);
+    }
   }, [filterStatus]);
 
   useEffect(() => { fetchData(); }, [fetchData]);

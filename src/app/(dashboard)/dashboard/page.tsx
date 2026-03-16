@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import {
-  Users, Calendar, UserCheck, TrendingUp, AlertTriangle, Target,
-  Clock, Award, Bell, CalendarDays, ChevronRight, Phone,
+  Calendar, UserCheck, TrendingUp, AlertTriangle, Target,
+  Award, Bell, CalendarDays, ChevronRight, Phone,
 } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { LeadsOverTimeChart } from "@/components/dashboard/LeadsOverTimeChart";
@@ -19,6 +19,7 @@ interface DashboardData {
   totalLeads: number; todayLeads: number; weekLeads: number; monthLeads: number;
   leadsByStage: Array<{ stageId: string; stageName: string; stageColor: string; count: number }>;
   leadsBySource: Array<{ sourceId: string; sourceName: string; sourceColor: string; count: number }>;
+  leadsByTrafficSource: Array<{ source: string; name: string; value: number; color: string }>;
   leadsByDay: Array<{ date: string; leads: number; converted: number }>;
   conversions: { scheduled: number; attended: number; closed: number; lost: number; conversionRate: number };
   attendants: Array<{ userId: string; userName: string; count: number; conversions: number }>;
@@ -43,6 +44,7 @@ function getDateRange(days: number) {
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [period, setPeriod] = useState(30);
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
@@ -55,14 +57,25 @@ export default function DashboardPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       let startDate: string, endDate: string;
       if (useCustom && customStart && customEnd) { startDate = customStart; endDate = customEnd; }
       else { ({ startDate, endDate } = getDateRange(period)); }
       const res = await fetch(`/api/dashboard?startDate=${startDate}&endDate=${endDate}`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        console.error("[dashboard] API error", res.status, body);
+        setFetchError(`Erro ao carregar dados (${res.status}). Verifique o console do servidor.`);
+        return;
+      }
       setData(await res.json());
-    } finally { setLoading(false); }
+    } catch (err) {
+      console.error("[dashboard] fetch threw:", err);
+      setFetchError("Erro de rede ao conectar com a API.");
+    } finally {
+      setLoading(false);
+    }
   }, [period, useCustom, customStart, customEnd]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -75,11 +88,21 @@ export default function DashboardPage() {
     setDateLeadsLoading(false);
   }
 
+  const trafficChartData = data?.leadsByTrafficSource ?? [];
   const channelChartData = data?.leadsBySource?.map((s) => ({ name: s.sourceName, value: s.count, color: s.sourceColor })) ?? [];
   const funnelChartData = data?.leadsByStage?.map((s) => ({ name: s.stageName, count: s.count, color: s.stageColor })) ?? [];
 
   return (
     <div className="p-6 space-y-5">
+      {/* Error banner */}
+      {fetchError && (
+        <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          <span className="flex-1">{fetchError}</span>
+          <button onClick={fetchData} className="text-xs font-semibold underline hover:no-underline">Tentar novamente</button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -211,74 +234,46 @@ export default function DashboardPage() {
           </>
         ) : (
           <>
-            <LeadsByChannelChart data={channelChartData} />
+            <LeadsByChannelChart data={trafficChartData.length > 0 ? trafficChartData : channelChartData} />
             <FunnelStatusChart data={funnelChartData} />
           </>
         )}
       </div>
 
-      {/* Bottom Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Attendants */}
-        <div className="card p-5">
-          <h3 className="text-sm font-semibold text-slate-900 mb-3">Ranking de Atendentes</h3>
-          {loading ? (
-            <div className="space-y-2">{[1,2,3].map((i) => <div key={i} className="animate-pulse h-10 bg-slate-100 rounded-lg" />)}</div>
-          ) : (data?.attendants ?? []).length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-6">Sem dados</p>
-          ) : (
-            <div className="space-y-1.5">
-              {(data?.attendants ?? []).map((a, i) => (
-                <div key={a.userId} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50">
-                  <span className="text-xs font-bold text-slate-300 w-5 text-center">#{i + 1}</span>
-                  <div className={cn("w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold", avatarColor(a.userName))}>
-                    {getInitials(a.userName)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-800 truncate">{a.userName}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-slate-900">{a.count}</p>
-                    <p className="text-[10px] text-slate-400">{a.conversions} conv.</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+      {/* Recent Leads — full width */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-slate-900">Leads Recentes</h3>
+          <Link href="/leads" className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-0.5">
+            Ver todos <ChevronRight className="w-3 h-3" />
+          </Link>
         </div>
-
-        {/* Recent Leads */}
-        <div className="card p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-slate-900">Leads Recentes</h3>
-            <Link href="/leads" className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-0.5">
-              Ver todos <ChevronRight className="w-3 h-3" />
-            </Link>
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {[1,2,3,4,5,6].map((i) => <div key={i} className="animate-pulse h-10 bg-slate-100 rounded-lg" />)}
           </div>
-          {loading ? (
-            <div className="space-y-2">{[1,2,3,4].map((i) => <div key={i} className="animate-pulse h-10 bg-slate-100 rounded-lg" />)}</div>
-          ) : (
-            <div className="space-y-1">
-              {(data?.recentLeads ?? []).map((lead) => (
-                <Link key={lead.id} href={`/leads/${lead.id}`}
-                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors">
-                  <div className={cn("w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0", avatarColor(lead.name))}>
-                    {getInitials(lead.name)}
+        ) : (data?.recentLeads ?? []).length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-6">Nenhum lead no período</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+            {(data?.recentLeads ?? []).map((lead) => (
+              <Link key={lead.id} href={`/leads/${lead.id}`}
+                className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors">
+                <div className={cn("w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0", avatarColor(lead.name))}>
+                  {getInitials(lead.name)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-medium text-slate-900 truncate">{lead.name}</p>
+                    {lead.slaBreached && <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" title="SLA vencido" />}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-medium text-slate-900 truncate">{lead.name}</p>
-                      {lead.slaBreached && <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />}
-                    </div>
-                    <p className="text-[11px] text-slate-400">{lead.sourceName} · {formatDate(lead.createdAt)}</p>
-                  </div>
-                  <StatusBadge stage={{ name: lead.stageName, color: lead.stageColor }} />
-                </Link>
-              ))}
-              {(data?.recentLeads ?? []).length === 0 && <p className="text-sm text-slate-400 text-center py-4">Nenhum lead</p>}
-            </div>
-          )}
-        </div>
+                  <p className="text-[11px] text-slate-400">{lead.sourceName} · {formatDate(lead.createdAt)}</p>
+                </div>
+                <StatusBadge stage={{ name: lead.stageName, color: lead.stageColor }} />
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -102,12 +102,17 @@ export function LeadFormModal({ open, onClose, onSuccess, leadId }: Props) {
     setLoading(true);
     setError("");
     try {
+      // Capture current page URL so the backend can extract UTM params from it
+      const currentUrl = typeof window !== "undefined" ? window.location.href : null;
+
       const payload = {
-        ...data,
+        name: data.name,
+        phone: data.phone,
         email: data.email || null,
         sourceId: data.sourceId || null,
         subsourceId: data.subsourceId || null,
         campaignId: data.campaignId || null,
+        funnelStageId: data.funnelStageId,
         doctorId: data.doctorId || null,
         unitId: data.unitId || null,
         assignedToId: data.assignedToId || null,
@@ -115,6 +120,9 @@ export function LeadFormModal({ open, onClose, onSuccess, leadId }: Props) {
         procedure: data.procedure || null,
         observations: data.observations || null,
         tagIds: selectedTags,
+        // Pass landing page so backend can extract UTMs from query params
+        landingPage: currentUrl,
+        referrer: typeof document !== "undefined" ? document.referrer || null : null,
       };
 
       const url = leadId ? `/api/leads/${leadId}` : "/api/leads";
