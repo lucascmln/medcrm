@@ -120,27 +120,6 @@ export default function LoginPage() {
         </button>
       </form>
 
-      {/* Demo hint */}
-      <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
-        <p className="text-xs font-medium text-slate-500 mb-2">
-          Credenciais de demonstração:
-        </p>
-        <div className="space-y-1 text-xs text-slate-600">
-          <div className="flex justify-between">
-            <span className="font-medium">Admin:</span>
-            <span>admin@bellaClinica.com</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="font-medium">Atendente:</span>
-            <span>juliana@bellaClinica.com</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="font-medium">Senha:</span>
-            <span>admin123</span>
-          </div>
-        </div>
-      </div>
-
       <p className="text-center text-xs text-slate-400 mt-6">
         © 2026 MedCrm Innove. Todos os direitos reservados.
       </p>
