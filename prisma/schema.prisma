@@ -281,6 +281,9 @@ model Lead {
   appointments Appointment[]
   followUps   FollowUp[]
 
+  @@index([tenantId, createdAt])
+  @@index([tenantId, funnelStageId])
+  @@index([tenantId, trafficSource])
   @@map("leads")
 }
 
@@ -314,6 +317,7 @@ model LeadHistory {
   lead Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
   user User? @relation(fields: [userId], references: [id])
 
+  @@index([leadId, createdAt])
   @@map("lead_history")
 }
 
@@ -414,6 +418,8 @@ model WebhookEvent {
 
   tenant Tenant? @relation(fields: [tenantId], references: [id])
 
+  @@index([createdAt])
+  @@index([tenantId, status])
   @@map("webhook_events")
 }
 
