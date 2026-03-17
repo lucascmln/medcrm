@@ -305,22 +305,113 @@ export async function processMetaLeadWebhook(
       continue;
     }
 
-    // 2. TODO (fase conectar): buscar dados do lead via Meta Graph API
-    //    const graphUrl = `https://graph.facebook.com/v20.0/${notif.leadgenId}` +
-    //      `?fields=id,created_time,field_data&access_token=ACCESS_TOKEN`;
-    //    const graphRes = await fetch(graphUrl);
-    //    const leadData = await graphRes.json();
-    //    const fields = Object.fromEntries(leadData.field_data.map(f => [f.name, f.values[0]]));
-    //    const phone = fields["phone_number"] || fields["telefone"] || fields["phone"];
-    //    const name  = fields["full_name"] || fields["nome"] || fields["name"];
-    //    const email = fields["email"];
+    // 2. Busca dados do lead via Meta Graph API (usando access_token da integração)
+    const integration = await prisma.$queryRaw<Array<{ config: string | null }>>`
+      SELECT config FROM tenant_integrations
+      WHERE provider = 'meta'
+        AND external_id = ${notif.pageId}
+        AND is_active = true
+      LIMIT 1
+    `;
 
-    // Por ora: registra que há um leadgen pendente de busca na Graph API
-    console.log(
-      `[meta-leads] leadgen_id=${notif.leadgenId} para tenant=${tenantId} ` +
-      `aguardando chamada Graph API (será ativado ao publicar URL pública)`
-    );
-    await markEventPending(eventId, "PENDING_GRAPH_API");
+    const config = integration[0]?.config ? JSON.parse(integration[0].config) : {};
+    const accessToken: string | undefined = config.accessToken;
+
+    if (!accessToken) {
+      console.warn(
+        `[meta-leads] Sem access_token para page_id "${notif.pageId}" — ` +
+        `cadastre o token na tela de Integrações. Marcando como PENDING_GRAPH_API.`
+      );
+      await markEventPending(eventId, "PENDING_GRAPH_API");
+      continue;
+    }
+
+    // Chama Graph API para obter os dados do formulário
+    let phone: string | undefined;
+    let name: string | undefined;
+    let email: string | undefined;
+    let procedure: string | undefined;
+
+    try {
+      const graphUrl =
+        `https://graph.facebook.com/v20.0/${notif.leadgenId}` +
+        `?fields=id,created_time,field_data&access_token=${encodeURIComponent(accessToken)}`;
+
+      const graphRes = await fetch(graphUrl);
+      const leadData = await graphRes.json();
+
+      if (leadData.error) {
+        console.error(`[meta-leads] Graph API error:`, leadData.error);
+        await markEventError(eventId, `Graph API: ${leadData.error.message}`);
+        continue;
+      }
+
+      // Normaliza os campos do formulário (nomes variam por cliente)
+      const fields: Record<string, string> = {};
+      for (const f of leadData.field_data ?? []) {
+        fields[f.name.toLowerCase()] = f.values?.[0] ?? "";
+      }
+
+      phone     = fields["phone_number"] || fields["telefone"] || fields["phone"] || fields["whatsapp"];
+      name      = fields["full_name"] || fields["nome"] || fields["name"] || fields["nome_completo"];
+      email     = fields["email"];
+      procedure = fields["procedimento"] || fields["procedure"] || fields["interesse"] || fields["interest"];
+
+      console.log(`[meta-leads] Graph API → leadgen ${notif.leadgenId}:`, { name, phone, email, procedure });
+    } catch (err: any) {
+      console.error(`[meta-leads] Falha ao chamar Graph API:`, err.message);
+      await markEventError(eventId, `Graph API fetch failed: ${err.message}`);
+      continue;
+    }
+
+    if (!phone) {
+      console.warn(`[meta-leads] leadgen_id=${notif.leadgenId} sem telefone — salvando evento como PROCESSED sem criar lead`);
+      await markEventProcessed(eventId);
+      continue;
+    }
+
+    // 3. Cria ou atualiza o lead no tenant
+    try {
+      const { lead, created } = await findOrCreateLeadByPhone(tenantId, phone, {
+        name,
+        trafficSource: "META_ADS",
+        utmSource:   "facebook",
+        utmCampaign: notif.campaignId,
+        observations: email ? `E-mail: ${email}` : undefined,
+      });
+
+      // Se o lead foi criado, preenche campos adicionais
+      if (created) {
+        if (procedure || email || notif.adId) {
+          await prisma.$executeRaw`
+            UPDATE leads SET
+              procedure  = COALESCE(${procedure ?? null}, procedure),
+              email      = COALESCE(${email ?? null}, email),
+              fbclid     = COALESCE(${notif.adId ?? null}, fbclid)
+            WHERE id = ${lead.id}
+          `;
+        }
+
+        // Registra histórico
+        await prisma.leadHistory.create({
+          data: {
+            leadId:      lead.id,
+            action:      "META_LEAD_ADS",
+            description: `Lead recebido via Meta Lead Ads` +
+              (notif.formId    ? ` · Form: ${notif.formId}`       : "") +
+              (notif.campaignId ? ` · Campanha: ${notif.campaignId}` : ""),
+          },
+        });
+      }
+
+      console.log(`[meta-leads] Lead ${created ? "criado" : "atualizado"}: ${lead.id} (${lead.name})`);
+    } catch (err: any) {
+      console.error(`[meta-leads] Erro ao criar lead:`, err.message);
+      await markEventError(eventId, err.message);
+      continue;
+    }
+
+    await markEventProcessed(eventId);
   }
 }
 
