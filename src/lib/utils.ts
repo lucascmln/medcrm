@@ -47,18 +47,29 @@ export function formatPhone(phone: string): string {
   return phone;
 }
 
-/** Iniciais para avatar — sempre retorna ao menos 1 caractere (fallback "?") */
+/** Títulos ignorados ao gerar iniciais (com ou sem ponto, case-insensitive). */
+const NAME_TITLES = new Set(["dr", "dra", "doutor", "doutora"]);
+
+/**
+ * Iniciais para avatar. Remove títulos (Dr./Dra./Doutor/Doutora), ignora espaços
+ * extras e usa a PRIMEIRA e a ÚLTIMA palavra do nome (não as duas primeiras),
+ * gerando até 2 letras maiúsculas. Nunca retorna vazio — fallback "?".
+ *
+ * Exemplos: "Dra. Ana Silva" → "AS" · "Dr. Ricardo Mendes" → "RM" ·
+ *           "Ricardo" → "R" · "" / null → "?"
+ */
 export function getInitials(name: string | null | undefined): string {
   const parts = (name ?? "")
     .trim()
     .split(/\s+/)
-    .filter(Boolean);
-  const initials = parts
-    .slice(0, 2)
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase();
-  return initials || "?";
+    .filter(Boolean)
+    .filter((p) => !NAME_TITLES.has(p.replace(/\.+$/, "").toLowerCase()));
+
+  if (parts.length === 0) return "?";
+
+  const first = parts[0][0] ?? "";
+  const last = parts.length > 1 ? (parts[parts.length - 1][0] ?? "") : "";
+  return (first + last).toUpperCase() || "?";
 }
 
 /** Verifica SLA (4h sem primeiro contato = breach) */

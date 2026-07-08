@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { cn, formatPhone, getInitials, avatarColor } from "@/lib/utils";
 import { getTrafficSourceConfig } from "@/lib/traffic-source-ui";
+import { leadMatchesSearch } from "@/lib/lead-search";
 
 interface LeadHit {
   id: string; name: string; phone: string; email?: string;
@@ -61,9 +62,15 @@ export function CommandPalette() {
     setLoading(true);
     timer.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/leads?search=${encodeURIComponent(q)}&limit=6`);
+        // Same endpoint and same match rules as the Leads page — the palette must
+        // never drift from it. `leadMatchesSearch` (the shared, unit-tested rule)
+        // is applied as a safety net so results stay consistent even if the API
+        // response ever changes shape. Matches any part of the full name (first
+        // name, surname, any slice), phone (formatted or not), e-mail, procedure.
+        const res = await fetch(`/api/leads?search=${encodeURIComponent(q)}&limit=8`);
         const json = res.ok ? await res.json() : { leads: [] };
-        setHits(Array.isArray(json.leads) ? json.leads : []);
+        const leads: LeadHit[] = Array.isArray(json.leads) ? json.leads : [];
+        setHits(leads.filter((l) => leadMatchesSearch(l, q)));
       } catch {
         setHits([]);
       } finally {

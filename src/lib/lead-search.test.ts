@@ -94,3 +94,27 @@ test("buildLeadSearchOr targets exactly the text fields, case-insensitive", () =
 test("buildLeadSearchOr is empty for a blank term", () => {
   assert.deepEqual(buildLeadSearchOr("   "), []);
 });
+
+// ── Command palette (Ctrl/Cmd+K) shares this exact rule ──────────────────────
+// The palette calls /api/leads?search= and re-filters hits with leadMatchesSearch,
+// so these assertions cover the palette's search behaviour directly.
+test("palette: first name, partial and surname all match the same lead", () => {
+  const hit = {
+    name: "Mirela Vasconcelos",
+    phone: "(11) 98003-0008",
+    email: "mirela@ex.com",
+    procedure: "Botox",
+  };
+  assert.ok(leadMatchesSearch(hit, "Mirela"), "first name");
+  assert.ok(leadMatchesSearch(hit, "mir"), "partial");
+  assert.ok(leadMatchesSearch(hit, "Vasco"), "surname");
+  assert.ok(leadMatchesSearch(hit, "980030008"), "partial phone");
+  assert.equal(leadMatchesSearch(hit, "Zzzxxx"), false, "non-existent");
+});
+
+test("palette: Norma Figueiredo found by first name and surname", () => {
+  const norma = { name: "Norma Figueiredo", phone: "(21) 3333-4444", email: null, procedure: null };
+  assert.ok(leadMatchesSearch(norma, "Norma"));
+  assert.ok(leadMatchesSearch(norma, "Figueiredo"));
+  assert.ok(leadMatchesSearch(norma, "figue"));
+});
