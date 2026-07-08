@@ -52,7 +52,12 @@ function LeadsPageInner() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  // The committed search term is the URL (`?search=`) — it survives reload and
+  // navigation, and stays in sync with the global header search. `inputValue`
+  // holds what's currently typed so the box updates instantly while the actual
+  // query is debounced into the URL.
+  const search = searchParams.get("search") ?? "";
+  const [inputValue, setInputValue] = useState(search);
   const [stageId, setStageId] = useState("");
   const [trafficSource, setTrafficSource] = useState("");
   const [sortBy, setSortBy] = useState<"name" | "source" | "stage" | "createdAt">("createdAt");
@@ -95,13 +100,12 @@ function LeadsPageInner() {
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
-  // Reactively sync ?search=... from the global header search — works even when
-  // the user is already on /leads (the component doesn't remount on navigation).
-  const urlSearch = searchParams.get("search") ?? "";
+  // When the committed search (URL) changes — from the global header, a reload,
+  // or the debounced input below — reflect it in the box and jump back to page 1.
   useEffect(() => {
-    setSearch(urlSearch);
+    setInputValue(search);
     setPage(1);
-  }, [urlSearch]);
+  }, [search]);
 
   useEffect(() => {
     fetch("/api/funnel-stages").then((r) => r.json()).then((s) => {
@@ -109,10 +113,26 @@ function LeadsPageInner() {
     });
   }, []);
 
+  // Persist the term to the URL (debounced) so it survives reload/navigation and
+  // the list never silently resets while a search is active. The URL is the
+  // single source of truth for the query; `inputValue` is just the typed text.
+  const commitSearch = useCallback((v: string) => {
+    const params = new URLSearchParams(Array.from(searchParams.entries()));
+    if (v.trim()) params.set("search", v.trim());
+    else params.delete("search");
+    router.replace(`/leads${params.toString() ? `?${params}` : ""}`, { scroll: false });
+  }, [router, searchParams]);
+
   function handleSearchChange(v: string) {
-    setSearch(v);
+    setInputValue(v);
     if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => setPage(1), 400);
+    searchTimer.current = setTimeout(() => commitSearch(v), 400);
+  }
+
+  function clearSearch() {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    setInputValue("");
+    commitSearch("");
   }
 
   function toggleSort(field: "name" | "source" | "stage" | "createdAt") {
@@ -224,10 +244,10 @@ function LeadsPageInner() {
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input type="text" placeholder="Buscar por nome ou telefone..." value={search}
+          <input type="text" placeholder="Buscar por nome, telefone, e-mail ou procedimento..." value={inputValue}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary-500" />
-          {search && <button onClick={() => { setSearch(""); setPage(1); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="w-3.5 h-3.5" /></button>}
+          {inputValue && <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="w-3.5 h-3.5" /></button>}
         </div>
         <button onClick={() => setShowFilters(!showFilters)}
           className={cn("flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg transition-colors",
@@ -316,7 +336,7 @@ function LeadsPageInner() {
                         <p className="text-sm font-medium text-slate-500">Nenhum resultado para sua busca</p>
                         <p className="text-xs text-slate-400 mt-0.5">
                           {search ? <>Nada encontrado para “<span className="font-medium text-slate-600">{search}</span>”. </> : null}
-                          Tente outro termo ou <button onClick={() => { setSearch(""); setStageId(""); setTrafficSource(""); setPage(1); }} className="text-primary-600 hover:underline">limpar os filtros</button>.
+                          Tente outro termo ou <button onClick={() => { setStageId(""); setTrafficSource(""); clearSearch(); }} className="text-primary-600 hover:underline">limpar os filtros</button>.
                         </p>
                       </>
                     ) : (

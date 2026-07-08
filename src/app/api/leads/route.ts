@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getEffectiveTenantId } from "@/lib/tenant";
 import { mergeTracking, type TrackingData } from "@/lib/tracking";
 import { rateLimit } from "@/lib/rate-limit";
+import { buildLeadSearchOr, phoneDigits } from "@/lib/lead-search";
 
 /**
  * Writes tracking fields via raw SQL so it works regardless of whether the
@@ -69,26 +70,25 @@ export async function GET(req: NextRequest) {
 
     const where: any = { tenantId: tenantId! };
 
-    if (search) {
-      // PostgreSQL: case-insensitive match across the fields a user would search by.
+    if (search.trim()) {
+      // Case-insensitive partial match across name / phone / email / procedure.
+      // Rules live in @/lib/lead-search so the Leads page and the Cmd/Ctrl+K
+      // palette (both hitting this endpoint) share one definition, and so the
+      // behaviour is unit-tested. Search NEVER filters by channel/origin.
       const term = search.trim();
-      const or: any[] = [
-        { name:      { contains: term, mode: "insensitive" } },
-        { phone:     { contains: term, mode: "insensitive" } },
-        { email:     { contains: term, mode: "insensitive" } },
-        { procedure: { contains: term, mode: "insensitive" } },
-      ];
+      const or: any[] = buildLeadSearchOr(term);
 
       // Phones are stored formatted, e.g. "(11) 98765-4321". A user typing raw
-      // digits ("11987654321") would otherwise match nothing, so normalize the
+      // digits ("980030008") would otherwise match nothing, so normalize the
       // stored value in SQL and compare digits-to-digits. Tenant isolation is
-      // preserved by the outer `where.tenantId` filter.
-      const digits = term.replace(/\D/g, "");
-      if (digits.length >= 3) {
+      // preserved because this OR is AND-combined with the outer `where.tenantId`.
+      const digits = phoneDigits(term);
+      if (digits) {
         try {
           const rows = await prisma.$queryRaw<{ id: string }[]>`
             SELECT id FROM leads
-            WHERE regexp_replace(phone, '[^0-9]', '', 'g') LIKE ${"%" + digits + "%"}
+            WHERE "tenantId" = ${tenantId!}
+              AND regexp_replace(phone, '[^0-9]', '', 'g') LIKE ${"%" + digits + "%"}
           `;
           if (rows.length) or.push({ id: { in: rows.map((r) => r.id) } });
         } catch (e) {

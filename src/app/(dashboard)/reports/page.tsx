@@ -84,6 +84,11 @@ export default function ReportsPage() {
     ? Object.keys(data[0]).filter((k) => k !== "color" && k !== "id")
     : [];
 
+  // Numeric-safe dataset for the "Por Status" charts. Recharts silently draws no
+  // bars when the value is a string/undefined, so coerce `total` to a number once
+  // and feed both the donut and the bar chart from the same normalized source.
+  const statusData = data.map((d) => ({ ...d, total: Number(d.total) || 0 }));
+
   return (
     <div className="p-6 space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -251,7 +256,7 @@ export default function ReportsPage() {
                 <ResponsiveContainer width="100%" height={260}>
                   <PieChart>
                     <Pie
-                      data={data.map((d) => ({ ...d, value: Number(d.total) || 0 }))}
+                      data={statusData.map((d) => ({ ...d, value: d.total }))}
                       dataKey="value"
                       nameKey="name"
                       cx="50%"
@@ -276,13 +281,16 @@ export default function ReportsPage() {
               <div className="card p-5">
                 <h3 className="text-sm font-semibold text-slate-900 mb-4">Total por Etapa</h3>
                 <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={data} layout="vertical" margin={{ left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 11, fill: "#94a3b8" }} allowDecimals={false} />
-                    <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: "#64748b" }} width={110} />
+                  {/* Same proven column layout as "Leads por Canal" (default layout,
+                      numeric dataKey). The previous horizontal (layout="vertical")
+                      variant rendered the axes/scale but no bars. */}
+                  <BarChart data={statusData} margin={{ top: 5, right: 16, left: 0, bottom: 40 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#64748b" }} angle={-30} textAnchor="end" interval={0} />
+                    <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} allowDecimals={false} />
                     <Tooltip contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12px" }} />
-                    <Bar dataKey="total" radius={[0, 4, 4, 0]}>
-                      {data.map((d, i) => <Cell key={i} fill={d.color ?? COLORS[i % COLORS.length]} />)}
+                    <Bar dataKey="total" name="Total" radius={[4, 4, 0, 0]}>
+                      {statusData.map((d, i) => <Cell key={i} fill={d.color ?? COLORS[i % COLORS.length]} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
