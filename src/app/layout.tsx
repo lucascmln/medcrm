@@ -1,10 +1,15 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  themeColor: "#424753",
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://innovecrm.com"),
   title: "MedCrm Innove – Gestão de Leads para Clínicas",
   description: "Plataforma de CRM especializada para médicos e clínicas",
+  manifest: "/manifest.webmanifest",
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
