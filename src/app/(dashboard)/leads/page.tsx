@@ -4,11 +4,12 @@ import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus, Search, Download, AlertCircle, ChevronLeft, ChevronRight,
-  Filter, Bell, CalendarDays, ExternalLink, Clock, X,
+  Filter, Bell, CalendarDays, ExternalLink, Clock, X, ArrowUp, ArrowDown, ArrowUpDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/badge";
 import { LeadFormModal } from "@/components/leads/LeadFormModal";
+import { LeadDrawer } from "@/components/leads/LeadDrawer";
 import { Modal } from "@/components/ui/modal";
 import { useForm } from "react-hook-form";
 import { formatDate, formatPhone, getInitials, avatarColor, cn } from "@/lib/utils";
@@ -54,6 +55,8 @@ function LeadsPageInner() {
   const [search, setSearch] = useState("");
   const [stageId, setStageId] = useState("");
   const [trafficSource, setTrafficSource] = useState("");
+  const [sortBy, setSortBy] = useState<"name" | "source" | "stage" | "createdAt">("createdAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [showFilters, setShowFilters] = useState(false);
   const [showModal, setShowModal] = useState(false);
 
@@ -62,6 +65,7 @@ function LeadsPageInner() {
   // Quick action modals
   const [quickFULead, setQuickFULead] = useState<Lead | null>(null);
   const [quickApptLead, setQuickApptLead] = useState<Lead | null>(null);
+  const [drawerLeadId, setDrawerLeadId] = useState<string | null>(null);
 
   const fuForm = useForm<QuickFUForm>();
   const apptForm = useForm<QuickApptForm>({ defaultValues: { duration: 60 } });
@@ -71,7 +75,7 @@ function LeadsPageInner() {
   const fetchLeads = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: "25" });
+      const params = new URLSearchParams({ page: String(page), limit: "25", sortBy, sortOrder });
       if (search) params.set("search", search);
       if (stageId) params.set("stageId", stageId);
       if (trafficSource) params.set("trafficSource", trafficSource);
@@ -87,7 +91,7 @@ function LeadsPageInner() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, stageId, trafficSource]);
+  }, [page, search, stageId, trafficSource, sortBy, sortOrder]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
@@ -109,6 +113,16 @@ function LeadsPageInner() {
     setSearch(v);
     if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => setPage(1), 400);
+  }
+
+  function toggleSort(field: "name" | "source" | "stage" | "createdAt") {
+    if (sortBy === field) {
+      setSortOrder((o) => (o === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(field);
+      setSortOrder(field === "createdAt" ? "desc" : "asc");
+    }
+    setPage(1);
   }
 
   async function exportCSV() {
@@ -259,11 +273,25 @@ function LeadsPageInner() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wide px-4 py-2.5">Lead</th>
-                <th className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wide px-4 py-2.5">Canal</th>
-                <th className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wide px-4 py-2.5">Etapa</th>
+                {([
+                  { label: "Lead", field: "name" as const },
+                  { label: "Canal", field: "source" as const },
+                  { label: "Etapa", field: "stage" as const },
+                ]).map(({ label, field }) => (
+                  <th key={field} className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wide px-4 py-2.5">
+                    <button onClick={() => toggleSort(field)} className={cn("inline-flex items-center gap-1 transition-colors hover:text-slate-600", sortBy === field && "text-slate-700")}>
+                      {label}
+                      {sortBy !== field ? <ArrowUpDown className="w-3 h-3 opacity-40" /> : sortOrder === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                    </button>
+                  </th>
+                ))}
                 <th className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wide px-4 py-2.5">Follow-up</th>
-                <th className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wide px-4 py-2.5">Entrada</th>
+                <th className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wide px-4 py-2.5">
+                  <button onClick={() => toggleSort("createdAt")} className={cn("inline-flex items-center gap-1 transition-colors hover:text-slate-600", sortBy === "createdAt" && "text-slate-700")}>
+                    Entrada
+                    {sortBy !== "createdAt" ? <ArrowUpDown className="w-3 h-3 opacity-40" /> : sortOrder === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                  </button>
+                </th>
                 <th className="w-24 px-4 py-2.5" />
               </tr>
             </thead>
@@ -303,7 +331,7 @@ function LeadsPageInner() {
                 leads.map((lead) => {
                   const fu = nextFollowUpLabel(lead.followUps);
                   return (
-                    <tr key={lead.id} onClick={() => router.push(`/leads/${lead.id}`)}
+                    <tr key={lead.id} onClick={() => setDrawerLeadId(lead.id)}
                       className="hover:bg-slate-50/80 cursor-pointer transition-colors group">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
@@ -438,6 +466,9 @@ function LeadsPageInner() {
           </div>
         </form>
       </Modal>
+
+      {/* Lead side drawer */}
+      <LeadDrawer leadId={drawerLeadId} onClose={() => setDrawerLeadId(null)} onChanged={fetchLeads} />
     </div>
   );
 }

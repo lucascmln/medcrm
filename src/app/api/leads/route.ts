@@ -55,6 +55,18 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "20");
     const all = searchParams.get("all") === "true";
 
+    // Safe, whitelisted sorting. Unknown fields fall back to newest-first.
+    const sortBy = searchParams.get("sortBy") || "createdAt";
+    const sortOrder: "asc" | "desc" = searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
+    const SORT_MAP: Record<string, any> = {
+      name:      { name: sortOrder },
+      createdAt: { createdAt: sortOrder },
+      updatedAt: { lastInteractionAt: sortOrder },
+      source:    { source: { name: sortOrder } },
+      stage:     { funnelStage: { order: sortOrder } },
+    };
+    const orderBy = SORT_MAP[sortBy] ?? { createdAt: "desc" };
+
     const where: any = { tenantId: tenantId! };
 
     if (search) {
@@ -116,7 +128,7 @@ export async function GET(req: NextRequest) {
     };
 
     if (all) {
-      const leads = await prisma.lead.findMany({ where, include, orderBy: { createdAt: "desc" } });
+      const leads = await prisma.lead.findMany({ where, include, orderBy });
       return NextResponse.json({ leads, total: leads.length });
     }
 
@@ -124,7 +136,7 @@ export async function GET(req: NextRequest) {
       prisma.lead.findMany({
         where,
         include,
-        orderBy: { createdAt: "desc" },
+        orderBy,
         skip: (page - 1) * limit,
         take: limit,
       }),

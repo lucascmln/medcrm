@@ -11,9 +11,9 @@ import { CSS } from "@dnd-kit/utilities";
 import { Plus, AlertCircle, Search, Phone, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LeadFormModal } from "@/components/leads/LeadFormModal";
+import { LeadDrawer } from "@/components/leads/LeadDrawer";
 import { formatDate, formatPhone, getInitials, avatarColor, cn } from "@/lib/utils";
 import { toast } from "@/components/ui/toast";
-import { useRouter } from "next/navigation";
 
 /** Safe fetch → always resolves, never throws. Returns null on any failure. */
 async function safeJson<T>(res: Response): Promise<T | null> {
@@ -35,9 +35,8 @@ interface FunnelStage {
   isLost: boolean; isFinal: boolean;
 }
 
-function LeadCard({ lead, isDragging }: { lead: Lead; isDragging?: boolean }) {
+function LeadCard({ lead, isDragging, onOpen }: { lead: Lead; isDragging?: boolean; onOpen?: (id: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging: sorting } = useSortable({ id: lead.id });
-  const router = useRouter();
 
   return (
     <div
@@ -45,7 +44,7 @@ function LeadCard({ lead, isDragging }: { lead: Lead; isDragging?: boolean }) {
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: sorting ? 0.4 : 1 }}
       {...attributes}
       {...listeners}
-      onClick={() => router.push(`/leads/${lead.id}`)}
+      onClick={() => onOpen?.(lead.id)}
       className={cn(
         "bg-white rounded-xl border p-3 cursor-grab active:cursor-grabbing select-none",
         "hover:shadow-md transition-all hover:-translate-y-0.5",
@@ -89,7 +88,7 @@ function LeadCard({ lead, isDragging }: { lead: Lead; isDragging?: boolean }) {
   );
 }
 
-function KanbanColumn({ stage, leads }: { stage: FunnelStage; leads: Lead[] }) {
+function KanbanColumn({ stage, leads, onOpen }: { stage: FunnelStage; leads: Lead[]; onOpen: (id: string) => void }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
 
   return (
@@ -113,7 +112,7 @@ function KanbanColumn({ stage, leads }: { stage: FunnelStage; leads: Lead[] }) {
         )}>
         <SortableContext items={leads.map((l) => l.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
-            {leads.map((lead) => <LeadCard key={lead.id} lead={lead} />)}
+            {leads.map((lead) => <LeadCard key={lead.id} lead={lead} onOpen={onOpen} />)}
           </div>
         </SortableContext>
         {leads.length === 0 && (
@@ -135,6 +134,7 @@ export default function KanbanPage() {
   const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState("");
   const [hideLost, setHideLost] = useState(true);
+  const [drawerLeadId, setDrawerLeadId] = useState<string | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -321,7 +321,7 @@ export default function KanbanPage() {
           onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="flex gap-3 min-w-max pb-2">
             {visibleStages.map((stage) => (
-              <KanbanColumn key={stage.id} stage={stage} leads={getStageLeads(stage.id)} />
+              <KanbanColumn key={stage.id} stage={stage} leads={getStageLeads(stage.id)} onOpen={setDrawerLeadId} />
             ))}
           </div>
           <DragOverlay>{activeLead && <LeadCard lead={activeLead} isDragging />}</DragOverlay>
@@ -330,6 +330,10 @@ export default function KanbanPage() {
 
       <LeadFormModal open={showModal} onClose={() => setShowModal(false)}
         onSuccess={() => { setShowModal(false); fetchData(); }} />
+
+      {/* Lead side drawer */}
+      <LeadDrawer leadId={drawerLeadId} onClose={() => setDrawerLeadId(null)} onChanged={fetchData} />
+
     </div>
   );
 }

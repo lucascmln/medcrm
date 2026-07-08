@@ -98,6 +98,79 @@
   background: #94a3b8;
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Dark theme — unlayered rules so they win over Tailwind's
+   @layer utilities/base by cascade-layer precedence (unlayered
+   declarations beat layered ones regardless of specificity).
+   Retargets the literal utilities the app already uses, so the
+   whole UI flips without editing every screen.
+   ───────────────────────────────────────────────────────────── */
+.dark { color-scheme: dark; }
+.dark body { background-color: #0b0f17; color: #e2e8f0; }
+
+/* Surfaces */
+.dark .bg-white { background-color: #151a24; }
+.dark .bg-slate-50 { background-color: #0f141d; }
+.dark .bg-slate-100 { background-color: #1e2632; }
+.dark .bg-slate-100\/70 { background-color: rgba(30, 38, 50, 0.7); }
+.dark .bg-slate-50\/80 { background-color: rgba(26, 34, 46, 0.8); }
+.dark .card { background-color: #151a24; border-color: #2a3444; }
+.dark .metric-card { background-color: #151a24; border-color: #2a3444; }
+
+/* Text */
+.dark .text-slate-900 { color: #f1f5f9; }
+.dark .text-slate-800 { color: #e2e8f0; }
+.dark .text-slate-700 { color: #cbd5e1; }
+.dark .text-slate-600 { color: #aab6c8; }
+.dark .text-slate-500 { color: #93a1b5; }
+.dark .text-slate-400 { color: #71809a; }
+.dark .text-slate-300 { color: #55606f; }
+.dark .text-brand-900 { color: #f1f5f9; }
+.dark .text-brand-800 { color: #dbe4f3; }
+
+/* Borders / dividers */
+.dark .border-slate-200 { border-color: #2a3444; }
+.dark .border-slate-100 { border-color: #222b38; }
+.dark .border-slate-200\/80 { border-color: rgba(42, 52, 68, 0.8); }
+.dark .border-brand-200 { border-color: #33405a; }
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: #222b38; }
+.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) { border-color: #2a3444; }
+
+/* Hovers */
+.dark .hover\:bg-slate-50:hover { background-color: #1a222e; }
+.dark .hover\:bg-slate-100:hover { background-color: #222b38; }
+.dark .hover\:bg-slate-50\/80:hover { background-color: rgba(30, 38, 50, 0.8); }
+
+/* Brand-tinted accents (dashboard period card, icon chips) */
+.dark .from-brand-50 {
+  --tw-gradient-from: #1a2130 var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(26 33 48 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+.dark .to-white { --tw-gradient-to: #12161f var(--tw-gradient-to-position); }
+.dark .bg-brand-100 { background-color: #26324a; }
+.dark .text-brand-600 { color: #93a7cf; }
+
+/* Component classes */
+.dark .input-field { background-color: #1a212c; border-color: #2a3444; color: #e2e8f0; }
+.dark .sidebar-link { color: #aab6c8; }
+.dark .sidebar-link:hover { background-color: #1e2632; color: #f1f5f9; }
+.dark .btn-secondary { background-color: #1a212c; border-color: #2a3444; color: #cbd5e1; }
+.dark .page-title { color: #f1f5f9; }
+
+/* Native form controls that don't use .input-field */
+.dark input, .dark select, .dark textarea {
+  background-color: #1a212c;
+  border-color: #2a3444;
+  color: #e2e8f0;
+}
+.dark input::placeholder, .dark textarea::placeholder { color: #6b7788; }
+.dark .placeholder\:text-slate-400::placeholder { color: #6b7788; }
+
+/* Scrollbar */
+.dark ::-webkit-scrollbar-thumb { background: #33415a; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #435271; }
+
 /* Animações suaves */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
@@ -105,4 +178,11 @@
 }
 .animate-fade-in {
   animation: fadeIn 0.2s ease-out;
+}
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.animate-slide-in-right {
+  animation: slideInRight 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }

@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/shared/Sidebar";
 import { Header } from "@/components/shared/Header";
 import { TenantBanner } from "@/components/shared/TenantBanner";
 import { Toaster } from "@/components/ui/toast";
+import { CommandPalette } from "@/components/shared/CommandPalette";
 
 export default async function DashboardLayout({
   children,
@@ -24,6 +25,7 @@ export default async function DashboardLayout({
           <main className="flex-1 overflow-y-auto">{children}</main>
         </div>
         <Toaster />
+        <CommandPalette />
       </div>
     </SessionProvider>
   );

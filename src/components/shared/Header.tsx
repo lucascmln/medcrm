@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { ThemeToggle } from "@/components/shared/ThemeToggle";
 
 export function Header() {
   const { data: session } = useSession();
@@ -31,12 +32,16 @@ export function Header() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar leads por nome ou telefone..."
-            className="w-full pl-9 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white focus:border-transparent placeholder:text-slate-400 transition-all"
+            className="w-full pl-9 pr-16 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white focus:border-transparent placeholder:text-slate-400 transition-all"
           />
+          <kbd className="hidden sm:flex items-center gap-0.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 border border-slate-200 rounded px-1.5 py-0.5 pointer-events-none">
+            Ctrl K
+          </kbd>
         </div>
       </form>
 
       <div className="flex items-center gap-2">
+        <ThemeToggle />
         <Link href="/follow-up" className="relative p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors inline-flex">
           <Bell className="w-4 h-4" />
           <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
