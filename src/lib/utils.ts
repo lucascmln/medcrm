@@ -47,14 +47,18 @@ export function formatPhone(phone: string): string {
   return phone;
 }
 
-/** Iniciais para avatar */
-export function getInitials(name: string): string {
-  return name
-    .split(" ")
+/** Iniciais para avatar — sempre retorna ao menos 1 caractere (fallback "?") */
+export function getInitials(name: string | null | undefined): string {
+  const parts = (name ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const initials = parts
     .slice(0, 2)
     .map((n) => n[0])
     .join("")
     .toUpperCase();
+  return initials || "?";
 }
 
 /** Verifica SLA (4h sem primeiro contato = breach) */
@@ -73,7 +77,7 @@ export const roleLabels: Record<string, string> = {
 };
 
 /** Gera cor de avatar baseada no nome */
-export function avatarColor(name: string): string {
+export function avatarColor(name: string | null | undefined): string {
   const colors = [
     "bg-blue-500",
     "bg-emerald-500",
@@ -84,9 +88,10 @@ export function avatarColor(name: string): string {
     "bg-indigo-500",
     "bg-teal-500",
   ];
+  const str = name ?? "";
   let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
   }
   return colors[Math.abs(hash) % colors.length];
 }

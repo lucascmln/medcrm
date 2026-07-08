@@ -11,6 +11,7 @@ import { useForm } from "react-hook-form";
 import { format, isToday, isTomorrow, isPast, parseISO, isBefore, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components/ui/toast";
 import Link from "next/link";
 
 interface Appointment {
@@ -111,7 +112,12 @@ export default function AgendaPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...data, leadId: data.leadId || null }),
     });
-    if (res.ok) { setShowModal(false); reset(); setEditingId(null); fetchData(); }
+    if (res.ok) {
+      setShowModal(false); reset(); setEditingId(null); fetchData();
+      toast.success(editingId ? "Agendamento atualizado" : "Agendamento criado");
+    } else {
+      toast.error("Não foi possível salvar o agendamento");
+    }
   }
 
   function openCreate() {
@@ -169,8 +175,14 @@ export default function AgendaPage() {
         <div>
           <h1 className="page-title">Agenda</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            {appointments.length} agendamento{appointments.length !== 1 ? "s" : ""}
-            {overdue.length > 0 && <span className="text-red-500 font-medium"> · {overdue.length} atrasado{overdue.length > 1 ? "s" : ""}</span>}
+            {loading ? (
+              <span className="text-slate-400">Carregando agenda…</span>
+            ) : (
+              <>
+                {appointments.length} agendamento{appointments.length !== 1 ? "s" : ""}
+                {overdue.length > 0 && <span className="text-red-500 font-medium"> · {overdue.length} atrasado{overdue.length > 1 ? "s" : ""}</span>}
+              </>
+            )}
           </p>
         </div>
         <Button onClick={openCreate}>
@@ -222,8 +234,22 @@ export default function AgendaPage() {
       ) : appointments.length === 0 ? (
         <div className="card p-12 text-center">
           <Calendar className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-          <p className="text-sm font-medium text-slate-500">Nenhum agendamento encontrado</p>
-          <p className="text-xs text-slate-400 mt-1">Crie um novo agendamento pelo botão acima</p>
+          <p className="text-sm font-medium text-slate-500">
+            {filterDate || filterStatus ? "Nenhum agendamento para este filtro" : "Nenhum agendamento encontrado"}
+          </p>
+          <p className="text-xs text-slate-400 mt-1">
+            {filterDate || filterStatus ? "Ajuste ou limpe os filtros para ver mais." : "Comece criando o primeiro agendamento."}
+          </p>
+          <div className="flex items-center justify-center gap-2 mt-4">
+            {(filterDate || filterStatus) ? (
+              <Button size="sm" variant="secondary" onClick={() => { setFilterDate(""); setFilterStatus(""); }}>
+                Limpar filtros
+              </Button>
+            ) : null}
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="w-3.5 h-3.5" /> Novo Agendamento
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="space-y-5">

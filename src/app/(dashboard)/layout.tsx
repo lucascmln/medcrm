@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/shared/Sidebar";
 import { Header } from "@/components/shared/Header";
 import { TenantBanner } from "@/components/shared/TenantBanner";
+import { Toaster } from "@/components/ui/toast";
 
 export default async function DashboardLayout({
   children,
@@ -22,6 +23,7 @@ export default async function DashboardLayout({
           <TenantBanner />
           <main className="flex-1 overflow-y-auto">{children}</main>
         </div>
+        <Toaster />
       </div>
     </SessionProvider>
   );

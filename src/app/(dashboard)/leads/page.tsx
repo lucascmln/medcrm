@@ -15,6 +15,7 @@ import { formatDate, formatPhone, getInitials, avatarColor, cn } from "@/lib/uti
 import { format, parseISO, isPast, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { getTrafficSourceConfig, TRAFFIC_SOURCE_CONFIG, type TrafficSourceKey } from "@/lib/traffic-source-ui";
+import { toast } from "@/components/ui/toast";
 
 interface FollowUpItem { id: string; dueAt: string; status: string }
 interface Lead {
@@ -89,6 +90,12 @@ export default function LeadsPage() {
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
+  // Pick up a ?search=... coming from the global header search (once, on mount)
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("search");
+    if (q) setSearch(q);
+  }, []);
+
   useEffect(() => {
     fetch("/api/funnel-stages").then((r) => r.json()).then((s) => {
       setStages(Array.isArray(s) ? s : []);
@@ -152,7 +159,7 @@ export default function LeadsPage() {
 
   async function submitQuickFollowUp(data: QuickFUForm) {
     if (!quickFULead) return;
-    await fetch("/api/follow-ups", {
+    const res = await fetch("/api/follow-ups", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ leadId: quickFULead.id, dueAt: data.dueAt, notes: data.notes }),
@@ -160,11 +167,12 @@ export default function LeadsPage() {
     setQuickFULead(null);
     fuForm.reset();
     fetchLeads();
+    if (res.ok) toast.success("Follow-up criado"); else toast.error("Erro ao criar follow-up");
   }
 
   async function submitQuickAppt(data: QuickApptForm) {
     if (!quickApptLead) return;
-    await fetch("/api/appointments", {
+    const res = await fetch("/api/appointments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...data, leadId: quickApptLead.id, title: data.title || `Consulta — ${quickApptLead.name}` }),
@@ -172,6 +180,7 @@ export default function LeadsPage() {
     setQuickApptLead(null);
     apptForm.reset();
     fetchLeads();
+    if (res.ok) toast.success("Agendamento criado"); else toast.error("Erro ao criar agendamento");
   }
 
   const activeFilters = [stageId, trafficSource].filter(Boolean).length;
@@ -271,7 +280,20 @@ export default function LeadsPage() {
                 <tr>
                   <td colSpan={6} className="px-4 py-12 text-center">
                     <Search className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-                    <p className="text-sm text-slate-400">Nenhum lead encontrado</p>
+                    {search || activeFilters > 0 ? (
+                      <>
+                        <p className="text-sm font-medium text-slate-500">Nenhum resultado para sua busca</p>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {search ? <>Nada encontrado para “<span className="font-medium text-slate-600">{search}</span>”. </> : null}
+                          Tente outro termo ou <button onClick={() => { setSearch(""); setStageId(""); setTrafficSource(""); setPage(1); }} className="text-primary-600 hover:underline">limpar os filtros</button>.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm font-medium text-slate-500">Nenhum lead ainda</p>
+                        <p className="text-xs text-slate-400 mt-0.5">Clique em “Novo Lead” para cadastrar o primeiro.</p>
+                      </>
+                    )}
                   </td>
                 </tr>
               ) : (

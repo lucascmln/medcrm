@@ -11,7 +11,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { Plus, AlertCircle, Search, Phone, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LeadFormModal } from "@/components/leads/LeadFormModal";
-import { formatDate, getInitials, avatarColor, cn } from "@/lib/utils";
+import { formatDate, formatPhone, getInitials, avatarColor, cn } from "@/lib/utils";
+import { toast } from "@/components/ui/toast";
 import { useRouter } from "next/navigation";
 
 /** Safe fetch → always resolves, never throws. Returns null on any failure. */
@@ -48,10 +49,15 @@ function LeadCard({ lead, isDragging }: { lead: Lead; isDragging?: boolean }) {
       className={cn(
         "bg-white rounded-xl border p-3 cursor-grab active:cursor-grabbing select-none",
         "hover:shadow-md transition-all hover:-translate-y-0.5",
-        lead.slaBreached ? "border-red-200" : "border-slate-200/80",
+        lead.slaBreached ? "border-red-200 ring-1 ring-red-100" : "border-slate-200/80",
         isDragging && "shadow-2xl rotate-1 scale-105",
       )}
     >
+      {lead.slaBreached && (
+        <div className="flex items-center gap-1 mb-2 text-[10px] font-bold text-red-600 bg-red-50 rounded px-1.5 py-0.5 w-fit">
+          <AlertCircle className="w-3 h-3" /> SLA VENCIDO · +4h sem contato
+        </div>
+      )}
       <div className="flex items-start justify-between gap-1 mb-2">
         <div className="flex items-center gap-2 min-w-0">
           <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0", avatarColor(lead.name))}>
@@ -59,12 +65,11 @@ function LeadCard({ lead, isDragging }: { lead: Lead; isDragging?: boolean }) {
           </div>
           <span className="text-sm font-semibold text-slate-800 truncate">{lead.name}</span>
         </div>
-        {lead.slaBreached && <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" aria-label="SLA vencido" />}
       </div>
 
-      <div className="flex items-center gap-1 text-xs text-slate-400 mb-2">
-        <Phone className="w-3 h-3" />
-        <span>{lead.phone}</span>
+      <div className="flex items-center gap-1 text-xs text-slate-500 mb-2">
+        <Phone className="w-3 h-3 text-slate-400" />
+        <span className="font-medium">{formatPhone(lead.phone)}</span>
       </div>
 
       {lead.procedure && (
@@ -194,24 +199,36 @@ export default function KanbanPage() {
     if (!over) return;
 
     const leadId = active.id as string;
-    const targetStageId = over.id as string;
+    const overId = over.id as string;
     const lead = leads.find((l) => l.id === leadId);
-    if (!lead || lead.funnelStageId === targetStageId) return;
+    if (!lead) return;
+
+    // `over` may be a column (stage id) OR a card (lead id) when dropping onto
+    // another card. Resolve the real target stage in both cases.
+    let targetStageId = stages.find((s) => s.id === overId)?.id;
+    if (!targetStageId) {
+      targetStageId = leads.find((l) => l.id === overId)?.funnelStageId;
+    }
+    if (!targetStageId || lead.funnelStageId === targetStageId) return;
 
     const previousStageId = lead.funnelStageId;
+    const targetStage = stages.find((s) => s.id === targetStageId);
 
     // Optimistic update
-    setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, funnelStageId: targetStageId } : l));
+    setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, funnelStageId: targetStageId! } : l));
 
-    const res = await fetch(`/api/leads/${leadId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ funnelStageId: targetStageId }),
-    });
-
-    // Rollback if the server rejected the update
-    if (!res.ok) {
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ funnelStageId: targetStageId }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      toast.success(`${lead.name} movido para “${targetStage?.name ?? "nova etapa"}”`);
+    } catch {
+      // Rollback if the server rejected the update
       setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, funnelStageId: previousStageId } : l));
+      toast.error("Não foi possível mover o lead. Tente novamente.");
     }
   }
 

@@ -158,7 +158,13 @@ export default function UsersPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3"><RoleBadge role={user.role} /></td>
-                  <td className="px-4 py-3"><span className="text-sm text-slate-600">{user.unit?.name ?? "—"}</span></td>
+                  <td className="px-4 py-3">
+                    {user.unit?.name ? (
+                      <span className="text-sm text-slate-600">{user.unit.name}</span>
+                    ) : (
+                      <span className="text-xs text-slate-400 italic">Sem unidade</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full", user.isActive ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400")}>
                       {user.isActive ? "Ativo" : "Inativo"}

@@ -13,9 +13,11 @@ export function Header() {
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    if (search.trim()) {
-      router.push(`/leads?search=${encodeURIComponent(search.trim())}`);
-      setSearch("");
+    const term = search.trim();
+    if (term) {
+      // Keep the term visible in the box — clearing it made it look like the
+      // search was lost before navigation.
+      router.push(`/leads?search=${encodeURIComponent(term)}`);
     }
   }
 

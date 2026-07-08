@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import {
-  Calendar, UserCheck, TrendingUp, AlertTriangle, Target,
-  Award, Bell, CalendarDays, ChevronRight, Phone,
+  Calendar, UserCheck, TrendingUp, TrendingDown, AlertTriangle, Target,
+  Award, Bell, CalendarDays, ChevronRight, Phone, Users,
 } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { LeadsOverTimeChart } from "@/components/dashboard/LeadsOverTimeChart";
@@ -26,6 +26,14 @@ interface DashboardData {
   recentLeads: Array<{ id: string; name: string; phone: string; sourceName: string; stageName: string; stageColor: string; slaBreached: boolean; createdAt: string }>;
   slaBreached: number; avgResponseTime: number | null;
   pendingFollowUps: number; upcomingAppointments: number;
+  previous?: { leads: number; closed: number };
+}
+
+/** Period-over-period % delta. Returns null when there is no baseline to compare. */
+function pctDelta(current: number, previous: number | undefined): number | null {
+  if (previous === undefined) return null;
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 100);
 }
 
 const PERIODS = [
@@ -141,16 +149,34 @@ export default function DashboardPage() {
       {/* Today / Week / Month / Period */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "Hoje", value: data?.todayLeads ?? 0, accent: false },
-          { label: "Esta semana", value: data?.weekLeads ?? 0, accent: false },
-          { label: "Este mês", value: data?.monthLeads ?? 0, accent: false },
-          { label: `No período (${useCustom ? "custom" : `${period}d`})`, value: data?.totalLeads ?? 0, accent: true },
-        ].map(({ label, value, accent }) => (
-          <div key={label} className="card p-4">
-            <p className={cn("text-2xl font-bold", accent ? "text-primary-600" : "text-slate-900")}>
-              {loading ? <span className="inline-block w-8 h-6 bg-slate-100 rounded animate-pulse" /> : value}
-            </p>
-            <p className="text-xs text-slate-500 mt-0.5">{label}</p>
+          { label: "Hoje", value: data?.todayLeads ?? 0, accent: false, icon: Calendar },
+          { label: "Esta semana", value: data?.weekLeads ?? 0, accent: false, icon: CalendarDays },
+          { label: "Este mês", value: data?.monthLeads ?? 0, accent: false, icon: TrendingUp },
+          { label: `No período (${useCustom ? "custom" : `${period}d`})`, value: data?.totalLeads ?? 0, accent: true, icon: Users, trend: pctDelta(data?.totalLeads ?? 0, data?.previous?.leads) },
+        ].map(({ label, value, accent, icon: Icon, trend }) => (
+          <div key={label} className={cn(
+            "rounded-2xl border p-4 transition-shadow hover:shadow-md",
+            accent ? "border-brand-200 bg-gradient-to-br from-brand-50 to-white" : "border-slate-200 bg-white shadow-sm",
+          )}>
+            <div className="flex items-start justify-between">
+              <div className="min-w-0">
+                <p className={cn("text-3xl font-bold tracking-tight", accent ? "text-brand-800" : "text-slate-900")}>
+                  {loading ? <span className="inline-block w-10 h-7 bg-slate-100 rounded animate-pulse" /> : value}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">{label}</p>
+              </div>
+              <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
+                accent ? "bg-brand-100 text-brand-600" : "bg-slate-100 text-slate-400")}>
+                <Icon className="w-4 h-4" />
+              </div>
+            </div>
+            {!loading && trend !== null && trend !== undefined && (
+              <div className={cn("inline-flex items-center gap-1 text-[11px] font-semibold mt-2",
+                trend >= 0 ? "text-emerald-600" : "text-rose-500")}>
+                {trend >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                {trend > 0 ? "+" : ""}{trend}% <span className="text-slate-400 font-normal">vs. período anterior</span>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -159,7 +185,9 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <MetricCard title="Agendamentos" value={loading ? "—" : data?.conversions.scheduled ?? 0} icon={Calendar} iconColor="text-emerald-600" />
         <MetricCard title="Comparecimentos" value={loading ? "—" : data?.conversions.attended ?? 0} icon={UserCheck} iconColor="text-violet-600" />
-        <MetricCard title="Fechamentos" value={loading ? "—" : data?.conversions.closed ?? 0} icon={Award} iconColor="text-amber-600" />
+        <MetricCard title="Fechamentos" value={loading ? "—" : data?.conversions.closed ?? 0} icon={Award} iconColor="text-amber-600"
+          trend={!loading && data?.previous ? { value: pctDelta(data.conversions.closed, data.previous.closed) ?? 0, label: "vs. anterior" } : undefined} />
+
         <MetricCard title="Conversão" value={loading ? "—" : `${data?.conversions.conversionRate ?? 0}%`} icon={TrendingUp} iconColor="text-primary-600" />
         <MetricCard title="Leads Perdidos" value={loading ? "—" : data?.conversions.lost ?? 0} icon={Target} iconColor="text-rose-600" />
         <MetricCard title="SLA Vencido" value={loading ? "—" : data?.slaBreached ?? 0} icon={AlertTriangle} iconColor="text-rose-600" subtitle="> 4h sem contato" />

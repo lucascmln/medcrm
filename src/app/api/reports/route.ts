@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { format, subMonths, eachDayOfInterval } from "date-fns";
 import { differenceInHours } from "date-fns";
 import { getEffectiveTenantId } from "@/lib/tenant";
-import { TRAFFIC_SOURCE_CONFIG, type TrafficSourceKey } from "@/lib/traffic-source-ui";
+import { TRAFFIC_SOURCE_CONFIG, normalizeTrafficSourceKey } from "@/lib/traffic-source-ui";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -30,8 +30,8 @@ export async function GET(req: NextRequest) {
     const leads = await prisma.lead.findMany({ where, select: { trafficSource: true, closedAt: true, lostAt: true } });
     const map = new Map<string, { name: string; color: string; total: number; closed: number; lost: number }>();
     for (const l of leads) {
-      const key = (l.trafficSource ?? "DIRECT") as TrafficSourceKey;
-      const cfg = TRAFFIC_SOURCE_CONFIG[key] ?? TRAFFIC_SOURCE_CONFIG.DIRECT;
+      const key = normalizeTrafficSourceKey(l.trafficSource);
+      const cfg = TRAFFIC_SOURCE_CONFIG[key];
       if (!map.has(key)) map.set(key, { name: cfg.label, color: cfg.color, total: 0, closed: 0, lost: 0 });
       const v = map.get(key)!;
       v.total++;
@@ -165,7 +165,7 @@ export async function GET(req: NextRequest) {
 
     const map = new Map<string, { name: string; color: string; total: number; closed: number; lost: number }>();
     for (const l of leads) {
-      const key = (l as any).trafficSource ?? "DIRECT";
+      const key = normalizeTrafficSourceKey((l as any).trafficSource);
       const name = SOURCE_LABELS[key] ?? key;
       const color = SOURCE_COLORS[key] ?? "#94A3B8";
       if (!map.has(key)) map.set(key, { name, color, total: 0, closed: 0, lost: 0 });

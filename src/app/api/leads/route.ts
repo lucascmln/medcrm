@@ -58,11 +58,16 @@ export async function GET(req: NextRequest) {
     const where: any = { tenantId: tenantId! };
 
     if (search) {
-      // SQLite does not support mode:"insensitive" — LIKE is already case-insensitive for ASCII
+      // PostgreSQL: case-insensitive match across the fields a user would search by.
+      const term = search.trim();
+      // Also match phone ignoring formatting (spaces, dashes, parentheses)
+      const digits = term.replace(/\D/g, "");
       where.OR = [
-        { name: { contains: search } },
-        { phone: { contains: search } },
-        { email: { contains: search } },
+        { name:      { contains: term, mode: "insensitive" } },
+        { phone:     { contains: term, mode: "insensitive" } },
+        { email:     { contains: term, mode: "insensitive" } },
+        { procedure: { contains: term, mode: "insensitive" } },
+        ...(digits.length >= 3 ? [{ phone: { contains: digits } }] : []),
       ];
     }
     if (stageId) where.funnelStageId = stageId;

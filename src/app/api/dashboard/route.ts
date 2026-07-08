@@ -14,6 +14,7 @@ import {
   endOfMonth,
 } from "date-fns";
 import { getEffectiveTenantId } from "@/lib/tenant";
+import { normalizeTrafficSourceKey } from "@/lib/traffic-source-ui";
 
 export async function GET(req: NextRequest) {
   // ── Auth ──────────────────────────────────────────────────────────────────
@@ -42,13 +43,19 @@ export async function GET(req: NextRequest) {
 
   const periodWhere: any = { tenantId, createdAt: { gte: safeStart, lte: safeEnd } };
 
+  // Immediately-preceding window of equal length, for period-over-period trends
+  const rangeMs    = safeEnd.getTime() - safeStart.getTime();
+  const prevEnd    = new Date(safeStart.getTime() - 1);
+  const prevStart  = new Date(safeStart.getTime() - rangeMs - 1);
+
   // ── Queries ───────────────────────────────────────────────────────────────
   let leads: any[], stages: any[], sources: any[];
   let pendingFollowUps: number, upcomingAppointments: number;
   let todayLeads: number, weekLeads: number, monthLeads: number;
+  let prevLeads: number, prevClosed: number;
 
   try {
-    [leads, stages, sources, pendingFollowUps, upcomingAppointments, todayLeads, weekLeads, monthLeads] =
+    [leads, stages, sources, pendingFollowUps, upcomingAppointments, todayLeads, weekLeads, monthLeads, prevLeads, prevClosed] =
       await Promise.all([
         prisma.lead.findMany({
           where: periodWhere,
@@ -70,6 +77,9 @@ export async function GET(req: NextRequest) {
         prisma.lead.count({ where: { tenantId, createdAt: { gte: startOfDay(now),          lte: endOfDay(now) } } }),
         prisma.lead.count({ where: { tenantId, createdAt: { gte: startOfWeek(now, { weekStartsOn: 1 }), lte: endOfWeek(now, { weekStartsOn: 1 }) } } }),
         prisma.lead.count({ where: { tenantId, createdAt: { gte: startOfMonth(now),         lte: endOfMonth(now) } } }),
+        // Previous-period comparisons
+        prisma.lead.count({ where: { tenantId, createdAt: { gte: prevStart, lte: prevEnd } } }),
+        prisma.lead.count({ where: { tenantId, closedAt: { gte: prevStart, lte: prevEnd } } }),
       ]);
   } catch (err) {
     console.error("[dashboard] Prisma query error for tenantId", tenantId, ":", err);
@@ -179,7 +189,7 @@ export async function GET(req: NextRequest) {
     };
     const tsMap = new Map<string, number>();
     for (const l of leads) {
-      const key = (l as any).trafficSource ?? "DIRECT";
+      const key = normalizeTrafficSourceKey((l as any).trafficSource);
       tsMap.set(key, (tsMap.get(key) ?? 0) + 1);
     }
     const leadsByTrafficSource = trafficSourceOrder
@@ -215,6 +225,7 @@ export async function GET(req: NextRequest) {
       avgResponseTime,
       pendingFollowUps,
       upcomingAppointments,
+      previous: { leads: prevLeads, closed: prevClosed },
     });
   } catch (err) {
     console.error("[dashboard] response-build error for tenantId", tenantId, ":", err);

@@ -12,6 +12,7 @@ import { LeadFormModal } from "@/components/leads/LeadFormModal";
 import { Modal } from "@/components/ui/modal";
 import { formatDate, formatDateTime, formatPhone, formatCurrency, timeAgo, getInitials, avatarColor, cn } from "@/lib/utils";
 import { getTrafficSourceConfig } from "@/lib/traffic-source-ui";
+import { toast } from "@/components/ui/toast";
 
 const ACTION_LABELS: Record<string, string> = {
   CREATED: "Lead criado",
@@ -71,7 +72,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   async function submitNote() {
     if (!newNote.trim()) return;
     setAddingNote(true);
-    await fetch(`/api/leads/${id}/notes`, {
+    const res = await fetch(`/api/leads/${id}/notes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: newNote }),
@@ -79,6 +80,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     setNewNote("");
     setAddingNote(false);
     fetchLead();
+    if (res.ok) toast.success("Observação salva"); else toast.error("Erro ao salvar observação");
   }
 
   async function changeStage() {
@@ -87,13 +89,14 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     if (stage?.isLost) { setShowLostModal(true); return; }
 
     setChangingStage(true);
-    await fetch(`/api/leads/${id}`, {
+    const res = await fetch(`/api/leads/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ funnelStageId: newStageId }),
     });
     setChangingStage(false);
     fetchLead();
+    if (res.ok) toast.success(`Etapa alterada para “${stage?.name ?? ""}”`); else toast.error("Erro ao alterar etapa");
   }
 
   async function markLost() {

@@ -250,10 +250,26 @@ export default function ReportsPage() {
                 <h3 className="text-sm font-semibold text-slate-900 mb-4">Distribuição por Etapa</h3>
                 <ResponsiveContainer width="100%" height={260}>
                   <PieChart>
-                    <Pie data={data} dataKey="total" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={({ name, total }) => `${name}: ${total}`}>
+                    <Pie
+                      data={data.map((d) => ({ ...d, value: Number(d.total) || 0 }))}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={95}
+                      paddingAngle={2}
+                      minAngle={4}
+                      isAnimationActive={false}
+                      stroke="#fff"
+                      strokeWidth={2}
+                    >
                       {data.map((d, i) => <Cell key={i} fill={d.color ?? COLORS[i % COLORS.length]} />)}
                     </Pie>
-                    <Tooltip />
+                    <Tooltip formatter={(value: number, _n, p: any) => [`${value} leads`, p?.payload?.name]}
+                      contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12px" }} />
+                    <Legend verticalAlign="bottom" height={36} iconType="circle"
+                      formatter={(value) => <span className="text-xs text-slate-600">{value}</span>} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>

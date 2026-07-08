@@ -10,6 +10,7 @@ import { useForm } from "react-hook-form";
 import { format, isPast, isToday, isTomorrow, parseISO, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components/ui/toast";
 import Link from "next/link";
 
 interface FollowUp {
@@ -102,7 +103,8 @@ export default function FollowUpPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
-    if (res.ok) { setShowCreateModal(false); createForm.reset(); fetchData(); }
+    if (res.ok) { setShowCreateModal(false); createForm.reset(); fetchData(); toast.success("Follow-up criado"); }
+    else toast.error("Não foi possível criar o follow-up");
   }
 
   async function onReschedule(data: RescheduleFormData) {
@@ -112,7 +114,8 @@ export default function FollowUpPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ dueAt: data.dueAt, notes: data.notes, status: "PENDING" }),
     });
-    if (res.ok) { setReschedulingId(null); rescheduleForm.reset(); fetchData(); }
+    if (res.ok) { setReschedulingId(null); rescheduleForm.reset(); fetchData(); toast.success("Follow-up remarcado"); }
+    else toast.error("Não foi possível remarcar");
   }
 
   function openReschedule(f: FollowUp) {
@@ -129,6 +132,7 @@ export default function FollowUpPage() {
       body: JSON.stringify({ status: "COMPLETED" }),
     });
     fetchData();
+    toast.success("Follow-up concluído");
   }
 
   async function cancelFollowUp(id: string) {
@@ -137,6 +141,7 @@ export default function FollowUpPage() {
       body: JSON.stringify({ status: "CANCELLED" }),
     });
     fetchData();
+    toast.info("Follow-up cancelado");
   }
 
   async function runAutoGenerate() {
@@ -167,9 +172,17 @@ export default function FollowUpPage() {
         <div>
           <h1 className="page-title">Follow-up</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            {overdue.length > 0 && <span className="text-red-600 font-semibold">{overdue.length} vencido{overdue.length > 1 ? "s" : ""} · </span>}
-            {dueToday.length > 0 && <span className="text-orange-600 font-medium">{dueToday.length} para hoje · </span>}
-            {upcoming.length} próximo{upcoming.length !== 1 ? "s" : ""}
+            {loading ? (
+              <span className="text-slate-400">Carregando follow-ups…</span>
+            ) : pendingCount === 0 && done.length === 0 ? (
+              <span className="text-slate-400">Nenhum follow-up {filterStatus === "PENDING" ? "pendente" : "registrado"}</span>
+            ) : (
+              <>
+                {overdue.length > 0 && <span className="text-red-600 font-semibold">{overdue.length} vencido{overdue.length > 1 ? "s" : ""} · </span>}
+                {dueToday.length > 0 && <span className="text-orange-600 font-medium">{dueToday.length} para hoje · </span>}
+                {upcoming.length} próximo{upcoming.length !== 1 ? "s" : ""}
+              </>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -219,8 +232,23 @@ export default function FollowUpPage() {
       ) : followUps.length === 0 ? (
         <div className="card p-12 text-center">
           <Bell className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-          <p className="text-sm font-medium text-slate-500">Nenhum follow-up encontrado</p>
-          <p className="text-xs text-slate-400 mt-1">Use "Auto-gerar" para criar follow-ups automáticos</p>
+          <p className="text-sm font-medium text-slate-500">
+            {filterStatus === "PENDING" ? "Nenhum follow-up pendente" :
+             filterStatus === "COMPLETED" ? "Nenhum follow-up concluído" :
+             filterStatus === "CANCELLED" ? "Nenhum follow-up cancelado" :
+             "Nenhum follow-up encontrado"}
+          </p>
+          <p className="text-xs text-slate-400 mt-1">
+            {filterStatus === "PENDING" ? "Tudo em dia! Crie um novo ou use “Auto-gerar”." : "Use “Auto-gerar” para criar follow-ups automáticos."}
+          </p>
+          <div className="flex items-center justify-center gap-2 mt-4">
+            <Button size="sm" onClick={() => { createForm.reset(); setShowCreateModal(true); }}>
+              <Plus className="w-3.5 h-3.5" /> Criar follow-up
+            </Button>
+            <Button size="sm" variant="secondary" onClick={runAutoGenerate} loading={autoLoading}>
+              <Zap className="w-3.5 h-3.5" /> Auto-gerar
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="space-y-5">

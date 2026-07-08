@@ -19,3 +19,13 @@ export function getTrafficSourceConfig(key: string | null | undefined): TrafficS
   if (key && key in TRAFFIC_SOURCE_CONFIG) return TRAFFIC_SOURCE_CONFIG[key as TrafficSourceKey];
   return TRAFFIC_SOURCE_CONFIG.DIRECT;
 }
+
+/**
+ * Collapses any raw/legacy trafficSource value (null, "", "direct", unknown
+ * strings) into a canonical key. Without this, grouping charts by the raw
+ * value produces several separate "Direto" buckets on the same axis.
+ */
+export function normalizeTrafficSourceKey(key: string | null | undefined): TrafficSourceKey {
+  if (key && key in TRAFFIC_SOURCE_CONFIG) return key as TrafficSourceKey;
+  return "DIRECT";
+}
