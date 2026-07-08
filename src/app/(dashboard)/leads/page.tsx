@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus, Search, Download, AlertCircle, ChevronLeft, ChevronRight,
   Filter, Bell, CalendarDays, ExternalLink, Clock, X,
@@ -43,8 +43,9 @@ function nextFollowUpLabel(followUps?: FollowUpItem[]) {
 interface QuickFUForm { dueAt: string; notes: string }
 interface QuickApptForm { title: string; scheduledAt: string; duration: number }
 
-export default function LeadsPage() {
+function LeadsPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -90,11 +91,13 @@ export default function LeadsPage() {
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
-  // Pick up a ?search=... coming from the global header search (once, on mount)
+  // Reactively sync ?search=... from the global header search — works even when
+  // the user is already on /leads (the component doesn't remount on navigation).
+  const urlSearch = searchParams.get("search") ?? "";
   useEffect(() => {
-    const q = new URLSearchParams(window.location.search).get("search");
-    if (q) setSearch(q);
-  }, []);
+    setSearch(urlSearch);
+    setPage(1);
+  }, [urlSearch]);
 
   useEffect(() => {
     fetch("/api/funnel-stages").then((r) => r.json()).then((s) => {
@@ -436,5 +439,13 @@ export default function LeadsPage() {
         </form>
       </Modal>
     </div>
+  );
+}
+
+export default function LeadsPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-slate-400">Carregando…</div>}>
+      <LeadsPageInner />
+    </Suspense>
   );
 }

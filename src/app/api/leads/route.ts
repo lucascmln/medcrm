@@ -60,15 +60,31 @@ export async function GET(req: NextRequest) {
     if (search) {
       // PostgreSQL: case-insensitive match across the fields a user would search by.
       const term = search.trim();
-      // Also match phone ignoring formatting (spaces, dashes, parentheses)
-      const digits = term.replace(/\D/g, "");
-      where.OR = [
+      const or: any[] = [
         { name:      { contains: term, mode: "insensitive" } },
         { phone:     { contains: term, mode: "insensitive" } },
         { email:     { contains: term, mode: "insensitive" } },
         { procedure: { contains: term, mode: "insensitive" } },
-        ...(digits.length >= 3 ? [{ phone: { contains: digits } }] : []),
       ];
+
+      // Phones are stored formatted, e.g. "(11) 98765-4321". A user typing raw
+      // digits ("11987654321") would otherwise match nothing, so normalize the
+      // stored value in SQL and compare digits-to-digits. Tenant isolation is
+      // preserved by the outer `where.tenantId` filter.
+      const digits = term.replace(/\D/g, "");
+      if (digits.length >= 3) {
+        try {
+          const rows = await prisma.$queryRaw<{ id: string }[]>`
+            SELECT id FROM leads
+            WHERE regexp_replace(phone, '[^0-9]', '', 'g') LIKE ${"%" + digits + "%"}
+          `;
+          if (rows.length) or.push({ id: { in: rows.map((r) => r.id) } });
+        } catch (e) {
+          console.warn("[leads GET] phone digit search skipped:", (e as Error)?.message);
+        }
+      }
+
+      where.OR = or;
     }
     if (stageId) where.funnelStageId = stageId;
     if (sourceId) where.sourceId = sourceId;
