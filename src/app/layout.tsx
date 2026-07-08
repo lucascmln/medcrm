@@ -7,7 +7,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://innovecrm.com"),
-  title: "MedCrm Innove – Gestão de Leads para Clínicas",
+  title: "InnoveCRM – Gestão de Leads para Clínicas",
   description: "Plataforma de CRM especializada para médicos e clínicas",
   manifest: "/manifest.webmanifest",
   icons: {

@@ -430,7 +430,7 @@ export default function AdminPage() {
               variant="secondary"
               onClick={async () => {
                 const text =
-                  `Acesso ao MedCrm — ${credentials?.tenantName}\n` +
+                  `Acesso ao InnoveCRM — ${credentials?.tenantName}\n` +
                   `URL: ${typeof window !== "undefined" ? window.location.origin : ""}\n` +
                   `E-mail: ${credentials?.adminEmail}\n` +
                   `Senha: ${credentials?.adminPassword}\n\n` +

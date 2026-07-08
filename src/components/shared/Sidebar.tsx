@@ -20,6 +20,7 @@ import {
   Bell,
 } from "lucide-react";
 import { cn, getInitials, avatarColor } from "@/lib/utils";
+import { BrandMark } from "@/components/shared/BrandMark";
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -67,19 +68,15 @@ export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const userRole = session?.user?.role ?? "";
-  const tenantColor = session?.user?.tenantColor ?? "#0284c7";
 
   // For SUPER_ADMIN: read the selected tenant name from cookie (set after clicking "Entrar")
   const [impersonatedName, setImpersonatedName] = useState<string | null>(null);
-  const [impersonatedColor, setImpersonatedColor] = useState<string | null>(null);
   useEffect(() => {
     if (userRole === "SUPER_ADMIN") {
       setImpersonatedName(readCookie("x-tenant-name"));
-      setImpersonatedColor(readCookie("x-tenant-color"));
     }
   }, [userRole]);
 
-  const displayColor   = impersonatedColor ?? tenantColor;
   const displayTenant  = impersonatedName ?? session?.user?.tenantName ?? (userRole === "SUPER_ADMIN" ? "Super Admin" : "CRM Médico");
 
   function isActive(href: string) {
@@ -91,14 +88,9 @@ export function Sidebar() {
       {/* Logo */}
       <div className="p-5 border-b border-slate-100">
         <Link href="/dashboard" className="flex items-center gap-3">
-          <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center shadow-sm"
-            style={{ backgroundColor: displayColor }}
-          >
-            <Stethoscope className="w-4 h-4 text-white" />
-          </div>
+          <BrandMark size={34} rounded="rounded-lg" className="shadow-sm flex-shrink-0" />
           <div>
-            <p className="text-sm font-bold text-slate-900 leading-tight">MedCrm Innove</p>
+            <p className="text-sm font-bold text-brand-900 leading-tight">InnoveCRM</p>
             <p className="text-[10px] text-slate-400 font-medium truncate max-w-[110px]">{displayTenant}</p>
           </div>
         </Link>

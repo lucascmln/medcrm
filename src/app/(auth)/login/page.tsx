@@ -5,8 +5,9 @@ import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Eye, EyeOff, Stethoscope, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { loginSchema, type LoginInput } from "@/lib/validations";
+import { BrandMark } from "@/components/shared/BrandMark";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -43,14 +44,14 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-2xl p-8 animate-fade-in">
+    <div className="bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 p-8 animate-fade-in">
       {/* Logo */}
       <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-14 h-14 bg-primary-600 rounded-xl mb-4 shadow-lg shadow-primary-200">
-          <Stethoscope className="w-7 h-7 text-white" />
+        <div className="inline-flex items-center justify-center mb-4">
+          <BrandMark size={64} rounded="rounded-2xl" priority className="shadow-lg shadow-brand-900/20" />
         </div>
-        <h1 className="text-2xl font-bold text-slate-900">MedCrm Innove</h1>
-        <p className="text-slate-500 text-sm mt-1">
+        <h1 className="text-2xl font-bold tracking-tight text-brand-900">InnoveCRM</h1>
+        <p className="text-slate-500 text-sm mt-1.5">
           Gestão inteligente de leads para clínicas
         </p>
       </div>
@@ -121,7 +122,7 @@ export default function LoginPage() {
       </form>
 
       <p className="text-center text-xs text-slate-400 mt-6">
-        © 2026 MedCrm Innove. Todos os direitos reservados.
+        © 2026 InnoveCRM · uma solução Innove Doctors
       </p>
     </div>
   );

@@ -21,6 +21,20 @@ const config: Config = {
           800: "#075985",
           900: "#0c4a6e",
         },
+        // Innove Doctors brand — graphite / dark slate-blue (matches the favicon tile)
+        brand: {
+          50: "#f5f6f8",
+          100: "#e7e9ed",
+          200: "#cbd0d9",
+          300: "#a4abbb",
+          400: "#767e93",
+          500: "#565d6f",
+          600: "#454b5a",
+          700: "#3a3f4b",
+          800: "#2c303a",
+          900: "#20232b",
+          950: "#141619",
+        },
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],
