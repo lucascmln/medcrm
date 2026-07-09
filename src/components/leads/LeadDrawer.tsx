@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
   X, ExternalLink, Phone, Mail, Stethoscope, Clock, Bell, CalendarDays,
-  Plus, Loader2, MessageSquare, AlertCircle,
+  Plus, Loader2, MessageSquare, MessageCircle, AlertCircle,
 } from "lucide-react";
 import { cn, formatPhone, formatDate, formatDateTime, timeAgo, getInitials, avatarColor } from "@/lib/utils";
 import { getTrafficSourceConfig } from "@/lib/traffic-source-ui";
@@ -25,6 +25,7 @@ export function LeadDrawer({ leadId, onClose, onChanged }: LeadDrawerProps) {
   const [lead, setLead] = useState<any>(null);
   const [followUps, setFollowUps] = useState<any[]>([]);
   const [appointments, setAppointments] = useState<any[]>([]);
+  const [waConversationId, setWaConversationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,10 +42,11 @@ export function LeadDrawer({ leadId, onClose, onChanged }: LeadDrawerProps) {
     setLoading(true);
     setError(null);
     try {
-      const [lRes, fRes, aRes] = await Promise.all([
+      const [lRes, fRes, aRes, wRes] = await Promise.all([
         fetch(`/api/leads/${leadId}`),
         fetch(`/api/follow-ups?leadId=${leadId}`),
         fetch(`/api/appointments?leadId=${leadId}`),
+        fetch(`/api/whatsapp/lead-conversation?leadId=${leadId}`),
       ]);
       if (!lRes.ok) {
         setError(lRes.status === 404 ? "Lead não encontrado." : "Não foi possível carregar o lead.");
@@ -54,6 +56,7 @@ export function LeadDrawer({ leadId, onClose, onChanged }: LeadDrawerProps) {
       setLead(await lRes.json());
       setFollowUps(fRes.ok ? await fRes.json() : []);
       setAppointments(aRes.ok ? await aRes.json() : []);
+      setWaConversationId(wRes.ok ? (await wRes.json())?.conversationId ?? null : null);
     } catch {
       setError("Erro de conexão ao carregar o lead.");
     } finally {
@@ -178,6 +181,20 @@ export function LeadDrawer({ leadId, onClose, onChanged }: LeadDrawerProps) {
                 <ActionChip active={form === "followup"} onClick={() => setForm(form === "followup" ? null : "followup")} icon={<Bell className="w-3.5 h-3.5" />} label="Follow-up" />
                 <ActionChip active={form === "appointment"} onClick={() => setForm(form === "appointment" ? null : "appointment")} icon={<CalendarDays className="w-3.5 h-3.5" />} label="Agendar" />
               </div>
+
+              {/* Conversa WhatsApp vinculada */}
+              {waConversationId ? (
+                <Link
+                  href={`/whatsapp?conversation=${waConversationId}`}
+                  className="flex items-center justify-center gap-2 w-full px-3 py-2 text-sm font-medium rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                >
+                  <MessageCircle className="w-4 h-4" /> Abrir conversa WhatsApp
+                </Link>
+              ) : (
+                <div className="flex items-center justify-center gap-2 w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50 text-slate-400">
+                  <MessageCircle className="w-3.5 h-3.5" /> Nenhuma conversa WhatsApp vinculada
+                </div>
+              )}
 
               {form === "note" && (
                 <div className="space-y-2">

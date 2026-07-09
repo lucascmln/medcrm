@@ -1,4 +1,11 @@
-export type TrafficSourceKey = "META_ADS" | "GOOGLE_ADS" | "BIO_LINK" | "GOOGLE_ORGANIC" | "DIRECT";
+export type TrafficSourceKey =
+  | "META_ADS"
+  | "GOOGLE_ADS"
+  | "BIO_LINK"
+  | "GOOGLE_ORGANIC"
+  | "WHATSAPP"
+  | "WHATSAPP_QR"
+  | "DIRECT";
 
 export interface TrafficSourceConfig {
   label: string;
@@ -12,6 +19,8 @@ export const TRAFFIC_SOURCE_CONFIG: Record<TrafficSourceKey, TrafficSourceConfig
   GOOGLE_ADS:     { label: "Google Ads",       color: "#EA4335", bg: "bg-red-100",     text: "text-red-700"     },
   BIO_LINK:       { label: "Link na Bio",      color: "#8B5CF6", bg: "bg-violet-100",  text: "text-violet-700"  },
   GOOGLE_ORGANIC: { label: "Google Orgânico",  color: "#10B981", bg: "bg-emerald-100", text: "text-emerald-700" },
+  WHATSAPP:       { label: "WhatsApp",         color: "#25D366", bg: "bg-emerald-100", text: "text-emerald-700" },
+  WHATSAPP_QR:    { label: "WhatsApp",         color: "#25D366", bg: "bg-emerald-100", text: "text-emerald-700" },
   DIRECT:         { label: "Direto",           color: "#94A3B8", bg: "bg-slate-100",   text: "text-slate-500"   },
 };
 

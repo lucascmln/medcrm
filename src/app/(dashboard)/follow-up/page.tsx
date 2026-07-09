@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Plus, Bell, CheckCircle, XCircle, Clock, AlertCircle, Zap, ChevronRight, RotateCcw, Phone,
 } from "lucide-react";
@@ -68,6 +68,19 @@ export default function FollowUpPage() {
   const [autoResult, setAutoResult] = useState<string | null>(null);
 
   const createForm = useForm<CreateFormData>();
+
+  // Deep-link: /follow-up?leadId=<id> abre o modal já com o lead pré-selecionado.
+  const preselectRef = useRef(false);
+  useEffect(() => {
+    if (preselectRef.current || typeof window === "undefined" || leads.length === 0) return;
+    const lid = new URLSearchParams(window.location.search).get("leadId");
+    if (lid && leads.some((l) => l.id === lid)) {
+      preselectRef.current = true;
+      createForm.reset();
+      createForm.setValue("leadId", lid);
+      setShowCreateModal(true);
+    }
+  }, [leads, createForm]);
   const rescheduleForm = useForm<RescheduleFormData>();
 
   const fetchData = useCallback(async () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Plus, Calendar, Clock, User, Phone, Edit2, Trash2,
   CheckCircle, XCircle, AlertCircle, ExternalLink, RotateCcw,
@@ -75,6 +75,19 @@ export default function AgendaPage() {
   const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm<FormData>({
     defaultValues: { duration: 60 },
   });
+
+  // Deep-link: /agenda?leadId=<id> abre o modal já com o lead pré-selecionado.
+  const preselectRef = useRef(false);
+  useEffect(() => {
+    if (preselectRef.current || typeof window === "undefined" || leads.length === 0) return;
+    const lid = new URLSearchParams(window.location.search).get("leadId");
+    if (lid && leads.some((l) => l.id === lid)) {
+      preselectRef.current = true;
+      const lead = leads.find((l) => l.id === lid);
+      reset({ duration: 60, title: lead ? `Consulta — ${lead.name}` : "", leadId: lid, notes: "", scheduledAt: "" });
+      setShowModal(true);
+    }
+  }, [leads, reset]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);

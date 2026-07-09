@@ -36,6 +36,7 @@ model Tenant {
   followUps          FollowUp[]
   webhookEvents      WebhookEvent[]
   tenantIntegrations TenantIntegration[]
+  whatsappConversations WhatsAppConversation[]
 
   @@map("tenants")
 }
@@ -280,6 +281,7 @@ model Lead {
   notes       LeadNote[]
   appointments Appointment[]
   followUps   FollowUp[]
+  whatsappConversations WhatsAppConversation[]
 
   @@index([tenantId, createdAt])
   @@index([tenantId, funnelStageId])
@@ -442,6 +444,62 @@ model TenantIntegration {
 
   @@unique([provider, externalId])
   @@map("tenant_integrations")
+}
+
+// ========================
+// WHATSAPP — CONVERSAS (inbox estilo Kommo)
+// status: OPEN | WAITING | CLOSED
+// A conexão da instância continua em `tenant_integrations` (provider=whatsapp_qr).
+// ========================
+model WhatsAppConversation {
+  id            String    @id @default(cuid())
+  tenantId      String    @map("tenant_id")
+  leadId        String?   @map("lead_id")
+  instanceName  String?   @map("instance_name")
+  phone         String // normalizado: +55DDDNUMERO
+  contactName   String?   @map("contact_name")
+  status        String    @default("OPEN")
+  unreadCount   Int       @default(0) @map("unread_count")
+  lastMessage   String?   @map("last_message")
+  lastMessageAt DateTime? @map("last_message_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id])
+  lead     Lead?             @relation(fields: [leadId], references: [id])
+  messages WhatsAppMessage[]
+
+  @@unique([tenantId, phone])
+  @@index([tenantId, status, lastMessageAt])
+  @@map("whatsapp_conversations")
+}
+
+// ========================
+// WHATSAPP — MENSAGENS
+// direction: INBOUND | OUTBOUND
+// type: TEXT | IMAGE | AUDIO | DOCUMENT
+// status: PENDING | SENT | DELIVERED | READ | FAILED | RECEIVED
+// externalMessageId: id do provider (dedupe). NULLs são distintos no Postgres.
+// ========================
+model WhatsAppMessage {
+  id                String    @id @default(cuid())
+  tenantId          String    @map("tenant_id")
+  conversationId    String    @map("conversation_id")
+  externalMessageId String?   @map("external_message_id")
+  direction         String
+  type              String    @default("TEXT")
+  body              String?
+  mediaUrl          String?   @map("media_url")
+  status            String?
+  sentAt            DateTime? @map("sent_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  conversation WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, externalMessageId])
+  @@index([conversationId, createdAt])
+  @@map("whatsapp_messages")
 }
 
 // ========================
