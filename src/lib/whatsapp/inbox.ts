@@ -20,6 +20,7 @@ export type ConversationRef = {
   phone: string;
   contactName: string | null;
   status: string;
+  remoteJid: string | null;
 };
 
 export type StageRef = { id: string };
@@ -30,6 +31,7 @@ export interface InboundInput {
   tenantId: string;
   instanceName: string;
   phone: string; // já normalizado (+55DDDNUMERO)
+  remoteJid?: string | null; // JID original de quem enviou
   contactName?: string;
   text: string;
   externalMessageId?: string | null;
@@ -76,8 +78,10 @@ export interface InboxStore {
     contactName: string | null;
     instanceName: string | null;
     leadId: string | null;
+    remoteJid: string | null;
   }): Promise<ConversationRef>;
   linkConversationLead(conversationId: string, leadId: string): Promise<void>;
+  setConversationRemoteJid(conversationId: string, remoteJid: string): Promise<void>;
   bumpConversationInbound(
     conversationId: string,
     input: { lastMessage: string; lastMessageAt: Date; contactName?: string | null }
@@ -118,6 +122,7 @@ export async function processInboundMessage(
     tenantId,
     instanceName,
     phone,
+    remoteJid,
     contactName,
     text,
     externalMessageId,
@@ -171,6 +176,7 @@ export async function processInboundMessage(
       contactName: contactName?.trim() || null,
       instanceName: instanceName || null,
       leadId: lead.id,
+      remoteJid: remoteJid || null,
     });
     conversationCreated = true;
   } else {
@@ -179,6 +185,11 @@ export async function processInboundMessage(
     if (!conversation.leadId) {
       await store.linkConversationLead(conversation.id, lead.id);
       conversation = { ...conversation, leadId: lead.id };
+    }
+    // Backfill do remoteJid em conversas antigas que ainda não o têm.
+    if (!conversation.remoteJid && remoteJid) {
+      await store.setConversationRemoteJid(conversation.id, remoteJid);
+      conversation = { ...conversation, remoteJid };
     }
   }
 
