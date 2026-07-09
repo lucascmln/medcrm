@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { IntegrationSettings } from "@/components/settings/IntegrationSettings";
+import { WhatsAppQrSettings } from "@/components/settings/WhatsAppQrSettings";
 
-const TABS = ["Geral", "Funil", "Canais", "Campanhas", "Tags", "Motivos de Perda", "Integrações"];
+const TABS = ["Geral", "Funil", "Canais", "Campanhas", "Tags", "Motivos de Perda", "Integrações", "WhatsApp QR"];
 
 export default function SettingsPage() {
   const [tab, setTab] = useState("Geral");
@@ -41,6 +42,7 @@ export default function SettingsPage() {
       {tab === "Tags" && <TagSettings />}
       {tab === "Motivos de Perda" && <LossReasonSettings />}
       {tab === "Integrações" && <IntegrationSettings />}
+      {tab === "WhatsApp QR" && <WhatsAppQrSettings />}
     </div>
   );
 }

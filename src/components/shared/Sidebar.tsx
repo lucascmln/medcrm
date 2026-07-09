@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   CalendarDays,
   Bell,
+  MessageCircle,
 } from "lucide-react";
 import { cn, getInitials, avatarColor } from "@/lib/utils";
 import { BrandMark } from "@/components/shared/BrandMark";
@@ -26,6 +27,7 @@ const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Leads", href: "/leads", icon: Users },
   { label: "Funil / Kanban", href: "/kanban", icon: Kanban },
+  { label: "Mensagens WhatsApp", href: "/whatsapp", icon: MessageCircle },
   { label: "Agenda", href: "/agenda", icon: CalendarDays },
   { label: "Follow-up", href: "/follow-up", icon: Bell },
   { label: "Relatórios", href: "/reports", icon: BarChart3 },
