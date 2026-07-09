@@ -72,6 +72,12 @@ function LeadsPageInner() {
   const [quickApptLead, setQuickApptLead] = useState<Lead | null>(null);
   const [drawerLeadId, setDrawerLeadId] = useState<string | null>(null);
 
+  // Deep-link: /leads?lead=<id> abre o drawer do lead automaticamente.
+  const leadParam = searchParams.get("lead");
+  useEffect(() => {
+    if (leadParam) setDrawerLeadId(leadParam);
+  }, [leadParam]);
+
   const fuForm = useForm<QuickFUForm>();
   const apptForm = useForm<QuickApptForm>({ defaultValues: { duration: 60 } });
 

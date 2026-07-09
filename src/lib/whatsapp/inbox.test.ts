@@ -45,12 +45,12 @@ class FakeStore implements InboxStore {
 
   async findConversation(tenantId: string, phone: string) {
     const c = this.conversations.find((x) => x.tenantId === tenantId && x.phone === phone);
-    return c ? { id: c.id, leadId: c.leadId, phone: c.phone, contactName: c.contactName } : null;
+    return c ? { id: c.id, leadId: c.leadId, phone: c.phone, contactName: c.contactName, status: c.status } : null;
   }
   async createConversation(input: { tenantId: string; phone: string; contactName: string | null; instanceName: string | null; leadId: string | null }) {
-    const c = { id: this.id("conv"), tenantId: input.tenantId, leadId: input.leadId, phone: input.phone, contactName: input.contactName, unreadCount: 0, lastMessage: null as string | null };
+    const c = { id: this.id("conv"), tenantId: input.tenantId, leadId: input.leadId, phone: input.phone, contactName: input.contactName, status: "OPEN", unreadCount: 0, lastMessage: null as string | null };
     this.conversations.push(c);
-    return { id: c.id, leadId: c.leadId, phone: c.phone, contactName: c.contactName };
+    return { id: c.id, leadId: c.leadId, phone: c.phone, contactName: c.contactName, status: c.status };
   }
   async linkConversationLead(conversationId: string, leadId: string) {
     const c = this.conversations.find((x) => x.id === conversationId);
@@ -58,7 +58,7 @@ class FakeStore implements InboxStore {
   }
   async bumpConversationInbound(conversationId: string, input: { lastMessage: string; lastMessageAt: Date }) {
     const c = this.conversations.find((x) => x.id === conversationId);
-    if (c) { c.unreadCount += 1; c.lastMessage = input.lastMessage; }
+    if (c) { c.unreadCount += 1; c.lastMessage = input.lastMessage; c.status = "OPEN"; }
   }
 
   async findMessageByExternalId(tenantId: string, externalMessageId: string) {
@@ -128,6 +128,31 @@ test("isolamento por tenant: mesmo telefone em tenants distintos não se cruza",
   // etapas corretas por tenant
   assert.equal(store.leads.find((l) => l.tenantId === "tenant_a")!.funnelStageId, "a_novo");
   assert.equal(store.leads.find((l) => l.tenantId === "tenant_b")!.funnelStageId, "b_novo");
+});
+
+test("conversa CLOSED reabre automaticamente ao receber nova mensagem", async () => {
+  const store = new FakeStore({ [T]: ["stage_novo"] });
+  await processInboundMessage(store, { ...base, text: "1", externalMessageId: "a" });
+  // Simula encerramento manual da conversa
+  store.conversations[0].status = "CLOSED";
+  store.conversations[0].unreadCount = 0;
+
+  const r2 = await processInboundMessage(store, { ...base, text: "2", externalMessageId: "b" });
+
+  assert.equal(r2.conversationReopened, true);
+  assert.equal(store.conversations[0].status, "OPEN"); // reaberta
+  assert.equal(store.conversations[0].unreadCount, 1); // incrementou
+  assert.equal(store.conversations.length, 1); // não duplicou
+  assert.equal(store.leads.length, 1); // não duplicou lead
+  assert.ok(store.history.some((h) => h.action === "WHATSAPP_REOPENED"));
+});
+
+test("conversa OPEN não gera evento de reabertura", async () => {
+  const store = new FakeStore({ [T]: ["stage_novo"] });
+  await processInboundMessage(store, { ...base, text: "1", externalMessageId: "a" });
+  const r2 = await processInboundMessage(store, { ...base, text: "2", externalMessageId: "b" });
+  assert.equal(r2.conversationReopened, false);
+  assert.ok(!store.history.some((h) => h.action === "WHATSAPP_REOPENED"));
 });
 
 test("funil vazio lança erro", async () => {

@@ -8,7 +8,8 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, AlertCircle, Search, Phone, RefreshCw } from "lucide-react";
+import Link from "next/link";
+import { Plus, AlertCircle, Search, Phone, RefreshCw, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LeadFormModal } from "@/components/leads/LeadFormModal";
 import { LeadDrawer } from "@/components/leads/LeadDrawer";
@@ -35,7 +36,7 @@ interface FunnelStage {
   isLost: boolean; isFinal: boolean;
 }
 
-function LeadCard({ lead, isDragging, onOpen }: { lead: Lead; isDragging?: boolean; onOpen?: (id: string) => void }) {
+function LeadCard({ lead, isDragging, onOpen, conversationId }: { lead: Lead; isDragging?: boolean; onOpen?: (id: string) => void; conversationId?: string }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging: sorting } = useSortable({ id: lead.id });
 
   return (
@@ -64,6 +65,17 @@ function LeadCard({ lead, isDragging, onOpen }: { lead: Lead; isDragging?: boole
           </div>
           <span className="text-sm font-semibold text-slate-800 truncate">{lead.name}</span>
         </div>
+        {conversationId && (
+          <Link
+            href={`/whatsapp?conversation=${conversationId}`}
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            title="Abrir conversa WhatsApp"
+            className="flex-shrink-0 p-1 rounded-md text-emerald-600 hover:bg-emerald-50 transition-colors"
+          >
+            <MessageCircle className="w-3.5 h-3.5" />
+          </Link>
+        )}
       </div>
 
       <div className="flex items-center gap-1 text-xs text-slate-500 mb-2">
@@ -88,7 +100,7 @@ function LeadCard({ lead, isDragging, onOpen }: { lead: Lead; isDragging?: boole
   );
 }
 
-function KanbanColumn({ stage, leads, onOpen }: { stage: FunnelStage; leads: Lead[]; onOpen: (id: string) => void }) {
+function KanbanColumn({ stage, leads, onOpen, convByLead }: { stage: FunnelStage; leads: Lead[]; onOpen: (id: string) => void; convByLead: Record<string, string> }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
 
   return (
@@ -112,7 +124,7 @@ function KanbanColumn({ stage, leads, onOpen }: { stage: FunnelStage; leads: Lea
         )}>
         <SortableContext items={leads.map((l) => l.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
-            {leads.map((lead) => <LeadCard key={lead.id} lead={lead} onOpen={onOpen} />)}
+            {leads.map((lead) => <LeadCard key={lead.id} lead={lead} onOpen={onOpen} conversationId={convByLead[lead.id]} />)}
           </div>
         </SortableContext>
         {leads.length === 0 && (
@@ -135,6 +147,7 @@ export default function KanbanPage() {
   const [search, setSearch] = useState("");
   const [hideLost, setHideLost] = useState(true);
   const [drawerLeadId, setDrawerLeadId] = useState<string | null>(null);
+  const [convByLead, setConvByLead] = useState<Record<string, string>>({});
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -146,6 +159,19 @@ export default function KanbanPage() {
         fetch("/api/funnel-stages"),
         fetch("/api/leads?all=true"),
       ]);
+
+      // Mapa lead → conversa WhatsApp (não bloqueia o board se falhar)
+      fetch("/api/whatsapp/conversations?filter=all")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: { conversations?: Array<{ id: string; lead?: { id: string } | null }> } | null) => {
+          if (!data?.conversations) return;
+          const map: Record<string, string> = {};
+          for (const c of data.conversations) {
+            if (c.lead?.id && !map[c.lead.id]) map[c.lead.id] = c.id;
+          }
+          setConvByLead(map);
+        })
+        .catch(() => {});
 
       const [stagesData, leadsData] = await Promise.all([
         safeJson<FunnelStage[] | { error: string }>(stagesRes),
@@ -321,7 +347,7 @@ export default function KanbanPage() {
           onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="flex gap-3 min-w-max pb-2">
             {visibleStages.map((stage) => (
-              <KanbanColumn key={stage.id} stage={stage} leads={getStageLeads(stage.id)} onOpen={setDrawerLeadId} />
+              <KanbanColumn key={stage.id} stage={stage} leads={getStageLeads(stage.id)} onOpen={setDrawerLeadId} convByLead={convByLead} />
             ))}
           </div>
           <DragOverlay>{activeLead && <LeadCard lead={activeLead} isDragging />}</DragOverlay>

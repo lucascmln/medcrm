@@ -45,6 +45,32 @@ export function WhatsAppInboxPage() {
   const selectedRef = useRef<string | null>(null);
   selectedRef.current = selectedId;
 
+  // ── Deep-link: /whatsapp?conversation=<id> ou ?lead=<id> ─────────────────────
+  const deepLinkedRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkedRef.current || typeof window === "undefined") return;
+    deepLinkedRef.current = true;
+    const sp = new URLSearchParams(window.location.search);
+    const convId = sp.get("conversation");
+    const leadId = sp.get("lead");
+    if (convId) {
+      setFilter("all"); // garante que conversas encerradas também apareçam
+      setSelectedId(convId);
+    } else if (leadId) {
+      fetch(`/api/whatsapp/lead-conversation?leadId=${leadId}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: { conversationId?: string | null } | null) => {
+          if (data?.conversationId) {
+            setFilter("all");
+            setSelectedId(data.conversationId);
+          } else {
+            toast.info("Este lead ainda não possui conversa WhatsApp.");
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
+
   // ── Fetchers ────────────────────────────────────────────────────────────────
   const fetchStatus = useCallback(async () => {
     const res = await fetch("/api/integrations/whatsapp-qr/status");
@@ -168,6 +194,30 @@ export function WhatsAppInboxPage() {
     [selectedId, detail, fetchConversations]
   );
 
+  const handleClose = useCallback(async () => {
+    if (!selectedId) return;
+    const res = await fetch(`/api/whatsapp/conversations/${selectedId}/close`, { method: "PATCH" });
+    if (res.ok) {
+      setDetail((prev) => (prev ? { ...prev, status: "CLOSED", unreadCount: 0 } : prev));
+      fetchConversations();
+      toast.success("Conversa encerrada.");
+    } else {
+      toast.error("Não foi possível encerrar a conversa.");
+    }
+  }, [selectedId, fetchConversations]);
+
+  const handleReopen = useCallback(async () => {
+    if (!selectedId) return;
+    const res = await fetch(`/api/whatsapp/conversations/${selectedId}/reopen`, { method: "PATCH" });
+    if (res.ok) {
+      setDetail((prev) => (prev ? { ...prev, status: "OPEN" } : prev));
+      fetchConversations();
+      toast.success("Conversa reaberta.");
+    } else {
+      toast.error("Não foi possível reabrir a conversa.");
+    }
+  }, [selectedId, fetchConversations]);
+
   const handleSimulate = useCallback(async () => {
     setSimulating(true);
     const res = await fetch("/api/whatsapp/simulate", { method: "POST" });
@@ -228,6 +278,8 @@ export function WhatsAppInboxPage() {
               messages={messages}
               canReply={connected}
               onSend={handleSend}
+              onClose={handleClose}
+              onReopen={handleReopen}
             />
             <LeadConversationPanel
               conversation={detail}

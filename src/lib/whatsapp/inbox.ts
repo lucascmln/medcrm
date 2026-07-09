@@ -19,6 +19,7 @@ export type ConversationRef = {
   leadId: string | null;
   phone: string;
   contactName: string | null;
+  status: string;
 };
 
 export type StageRef = { id: string };
@@ -42,6 +43,7 @@ export interface InboundResult {
   leadId: string | null;
   leadCreated: boolean;
   conversationCreated: boolean;
+  conversationReopened?: boolean;
   messageId?: string;
 }
 
@@ -161,6 +163,7 @@ export async function processInboundMessage(
   // 3. Conversa — busca por telefone; cria vinculada ao lead se não existir.
   let conversation = await store.findConversation(tenantId, phone);
   let conversationCreated = false;
+  let conversationReopened = false;
   if (!conversation) {
     conversation = await store.createConversation({
       tenantId,
@@ -170,9 +173,13 @@ export async function processInboundMessage(
       leadId: lead.id,
     });
     conversationCreated = true;
-  } else if (!conversation.leadId) {
-    await store.linkConversationLead(conversation.id, lead.id);
-    conversation = { ...conversation, leadId: lead.id };
+  } else {
+    // Conversa encerrada reabre automaticamente ao receber nova mensagem.
+    if (conversation.status === "CLOSED") conversationReopened = true;
+    if (!conversation.leadId) {
+      await store.linkConversationLead(conversation.id, lead.id);
+      conversation = { ...conversation, leadId: lead.id };
+    }
   }
 
   // 4. Persiste a mensagem INBOUND.
@@ -203,6 +210,14 @@ export async function processInboundMessage(
       createdAt: new Date(sentAt.getTime() - 1000),
     });
   }
+  if (conversationReopened) {
+    await store.addLeadHistory({
+      leadId: lead.id,
+      action: "WHATSAPP_REOPENED",
+      description: "Conversa WhatsApp reaberta por nova mensagem recebida.",
+      createdAt: new Date(sentAt.getTime() - 500),
+    });
+  }
   await store.addLeadHistory({
     leadId: lead.id,
     action: "WHATSAPP_MESSAGE",
@@ -217,6 +232,7 @@ export async function processInboundMessage(
     leadId: lead.id,
     leadCreated,
     conversationCreated,
+    conversationReopened,
     messageId: message.id,
   };
 }
