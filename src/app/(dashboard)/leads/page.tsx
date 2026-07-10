@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus, Search, Download, AlertCircle, ChevronLeft, ChevronRight,
-  Filter, Bell, CalendarDays, ExternalLink, Clock, X, ArrowUp, ArrowDown, ArrowUpDown,
+  Filter, Bell, CalendarDays, ExternalLink, Clock, X, ArrowUp, ArrowDown, ArrowUpDown, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/badge";
@@ -71,6 +71,8 @@ function LeadsPageInner() {
   const [quickFULead, setQuickFULead] = useState<Lead | null>(null);
   const [quickApptLead, setQuickApptLead] = useState<Lead | null>(null);
   const [drawerLeadId, setDrawerLeadId] = useState<string | null>(null);
+  const [deleteLead, setDeleteLead] = useState<Lead | null>(null);
+  const [deletingLead, setDeletingLead] = useState(false);
 
   // Deep-link: /leads?lead=<id> abre o drawer do lead automaticamente.
   const leadParam = searchParams.get("lead");
@@ -105,6 +107,24 @@ function LeadsPageInner() {
   }, [page, search, stageId, trafficSource, sortBy, sortOrder]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
+
+  async function confirmDeleteLead() {
+    if (!deleteLead) return;
+    setDeletingLead(true);
+    try {
+      const res = await fetch(`/api/leads/${deleteLead.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      toast.success("Lead excluído com sucesso.");
+      setDeleteLead(null);
+      // Remove da tela imediatamente e recarrega a contagem.
+      setLeads((prev) => prev.filter((l) => l.id !== deleteLead.id));
+      fetchLeads();
+    } catch {
+      toast.error("Não foi possível excluir o lead.");
+    } finally {
+      setDeletingLead(false);
+    }
+  }
 
   // When the committed search (URL) changes — from the global header, a reload,
   // or the debounced input below — reflect it in the box and jump back to page 1.
@@ -418,6 +438,11 @@ function LeadsPageInner() {
                             className="p-1.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
                             <ExternalLink className="w-3.5 h-3.5" />
                           </button>
+                          <button onClick={() => setDeleteLead(lead)}
+                            title="Excluir lead"
+                            className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -495,6 +520,21 @@ function LeadsPageInner() {
 
       {/* Lead side drawer */}
       <LeadDrawer leadId={drawerLeadId} onClose={() => setDrawerLeadId(null)} onChanged={fetchLeads} />
+
+      {/* Excluir lead */}
+      <Modal open={!!deleteLead} onClose={() => setDeleteLead(null)} title="Excluir lead" size="sm">
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-slate-600">
+            Tem certeza que deseja excluir este lead? Essa ação não pode ser desfeita.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setDeleteLead(null)}>Cancelar</Button>
+            <Button variant="danger" onClick={confirmDeleteLead} loading={deletingLead}>
+              <Trash2 className="w-4 h-4" /> Excluir lead
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

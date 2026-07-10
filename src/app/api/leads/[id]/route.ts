@@ -12,7 +12,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const { id } = await params;
     const lead = await prisma.lead.findFirst({
-      where: { id, tenantId },
+      where: { id, tenantId, deletedAt: null },
       include: {
         funnelStage: true,
         source: true,
@@ -55,7 +55,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     // Get current lead to track stage change
     const current = await prisma.lead.findFirst({
-      where: { id, tenantId },
+      where: { id, tenantId, deletedAt: null },
       include: { funnelStage: true },
     });
     if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -133,10 +133,23 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
 
     const { id } = await params;
-    const lead = await prisma.lead.findFirst({ where: { id, tenantId } });
+    // Escopo por tenant + ignora já-excluídos → impede excluir lead de outro tenant.
+    const lead = await prisma.lead.findFirst({ where: { id, tenantId, deletedAt: null } });
     if (!lead) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    await prisma.lead.delete({ where: { id } });
+    // Soft delete: marca deletedAt. NÃO apaga conversas/mensagens/histórico.
+    await prisma.lead.update({ where: { id }, data: { deletedAt: new Date() } });
+
+    // Registra no histórico do lead (preservado).
+    await prisma.leadHistory.create({
+      data: {
+        leadId: id,
+        userId: session.user.id,
+        action: "LEAD_DELETED",
+        description: `Lead excluído por ${session.user.name ?? "sistema"}`,
+      },
+    }).catch(() => {});
+
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("DELETE /api/leads/[id] error:", err);

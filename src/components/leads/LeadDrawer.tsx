@@ -4,12 +4,13 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
   X, ExternalLink, Phone, Mail, Stethoscope, Clock, Bell, CalendarDays,
-  Plus, Loader2, MessageSquare, MessageCircle, AlertCircle,
+  Plus, Loader2, MessageSquare, MessageCircle, AlertCircle, Trash2,
 } from "lucide-react";
 import { cn, formatPhone, formatDate, formatDateTime, timeAgo, getInitials, avatarColor } from "@/lib/utils";
 import { getTrafficSourceConfig } from "@/lib/traffic-source-ui";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { toast } from "@/components/ui/toast";
 
 interface LeadDrawerProps {
@@ -36,6 +37,8 @@ export function LeadDrawer({ leadId, onClose, onChanged }: LeadDrawerProps) {
   const [apptTitle, setApptTitle] = useState("");
   const [apptDate, setApptDate] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchAll = useCallback(async () => {
     if (!leadId) return;
@@ -115,6 +118,23 @@ export function LeadDrawer({ leadId, onClose, onChanged }: LeadDrawerProps) {
     else toast.error("Erro ao criar agendamento");
   }
 
+  async function deleteLead() {
+    if (!leadId) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      toast.success("Lead excluído com sucesso.");
+      setConfirmDelete(false);
+      onChanged?.();
+      onClose();
+    } catch {
+      toast.error("Não foi possível excluir o lead.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   if (!leadId) return null;
 
   const ts = lead?.trafficSource ? getTrafficSourceConfig(lead.trafficSource) : null;
@@ -143,12 +163,31 @@ export function LeadDrawer({ leadId, onClose, onChanged }: LeadDrawerProps) {
               className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 transition-colors">
               <ExternalLink className="w-4 h-4" />
             </Link>
+            <button onClick={() => setConfirmDelete(true)} title="Excluir lead" disabled={!lead}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40">
+              <Trash2 className="w-4 h-4" />
+            </button>
             <button onClick={onClose} title="Fechar (Esc)"
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
+
+        {/* Confirmação de exclusão */}
+        <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Excluir lead" size="sm">
+          <div className="p-5 space-y-4">
+            <p className="text-sm text-slate-600">
+              Tem certeza que deseja excluir este lead? Essa ação não pode ser desfeita.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setConfirmDelete(false)}>Cancelar</Button>
+              <Button variant="danger" onClick={deleteLead} loading={deleting}>
+                <Trash2 className="w-4 h-4" /> Excluir lead
+              </Button>
+            </div>
+          </div>
+        </Modal>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto">

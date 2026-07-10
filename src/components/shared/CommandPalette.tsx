@@ -84,8 +84,9 @@ export function CommandPalette() {
 
   const NAV: Item[] = [
     { key: "nav-dash", group: "Ir para", label: "Dashboard", icon: <LayoutDashboard className="w-4 h-4" />, run: () => go("/dashboard") },
-    { key: "nav-leads", group: "Ir para", label: "Leads", icon: <Users className="w-4 h-4" />, run: () => go("/leads") },
-    { key: "nav-kanban", group: "Ir para", label: "Funil / Kanban", icon: <Kanban className="w-4 h-4" />, run: () => go("/kanban") },
+    { key: "nav-leads", group: "Ir para", label: "Todos os leads", icon: <Users className="w-4 h-4" />, run: () => go("/leads") },
+    { key: "nav-kanban", group: "Ir para", label: "Funil de vendas", icon: <Kanban className="w-4 h-4" />, run: () => go("/kanban") },
+    { key: "nav-funnel-config", group: "Ir para", label: "Configurar funil", icon: <Kanban className="w-4 h-4" />, run: () => go("/settings/funnel") },
     { key: "nav-agenda", group: "Ir para", label: "Agenda", icon: <CalendarDays className="w-4 h-4" />, run: () => go("/agenda") },
     { key: "nav-fu", group: "Ir para", label: "Follow-up", icon: <Bell className="w-4 h-4" />, run: () => go("/follow-up") },
     { key: "nav-reports", group: "Ir para", label: "Relatórios", icon: <BarChart3 className="w-4 h-4" />, run: () => go("/reports") },

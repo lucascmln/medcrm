@@ -15,6 +15,7 @@ import { LeadFormModal } from "@/components/leads/LeadFormModal";
 import { LeadDrawer } from "@/components/leads/LeadDrawer";
 import { formatDate, formatPhone, getInitials, avatarColor, cn } from "@/lib/utils";
 import { toast } from "@/components/ui/toast";
+import { visibleFunnelStages } from "@/lib/funnel";
 
 /** Safe fetch → always resolves, never throws. Returns null on any failure. */
 async function safeJson<T>(res: Response): Promise<T | null> {
@@ -33,7 +34,7 @@ interface Lead {
 
 interface FunnelStage {
   id: string; name: string; color: string; order: number;
-  isLost: boolean; isFinal: boolean;
+  isLost: boolean; isFinal: boolean; isArchived?: boolean;
 }
 
 function LeadCard({ lead, isDragging, onOpen, conversationId }: { lead: Lead; isDragging?: boolean; onOpen?: (id: string) => void; conversationId?: string }) {
@@ -208,7 +209,9 @@ export default function KanbanPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const visibleStages = hideLost ? stages.filter((s) => !s.isLost) : stages;
+  // Etapas do funil configuráveis: exclui arquivadas, respeita a ordem e
+  // opcionalmente oculta as de perda.
+  const visibleStages = visibleFunnelStages(stages, { hideLost });
 
   const filteredLeads = search
     ? leads.filter((l) => l.name.toLowerCase().includes(search.toLowerCase()) || l.phone.includes(search))
@@ -294,7 +297,7 @@ export default function KanbanPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="page-title">Funil / Kanban</h1>
+          <h1 className="page-title">Funil de vendas</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             {leads.length} lead{leads.length !== 1 ? "s" : ""} no funil · {visibleStages.length} etapas
           </p>
