@@ -55,6 +55,23 @@ export function canActOnUser(input: {
 }
 
 /**
+ * Escopo de LISTAGEM de usuários conforme papel + tenant efetivo.
+ * - ATTENDANT/MANAGER: não podem listar (`allowed:false` → 403).
+ * - ADMIN: sempre restrito ao próprio tenant efetivo.
+ * - SUPER_ADMIN: tenant impersonado quando houver; sem tenant selecionado,
+ *   lista global (`where: {}`), conforme padrão atual.
+ */
+export function userListScope(input: {
+  role: string | undefined | null;
+  effectiveTenantId: string | null;
+}): { allowed: false } | { allowed: true; where: Record<string, unknown> } {
+  if (!canManageUsers(input.role)) return { allowed: false };
+  if (input.effectiveTenantId) return { allowed: true, where: { tenantId: input.effectiveTenantId } };
+  if (input.role === "SUPER_ADMIN") return { allowed: true, where: {} };
+  return { allowed: false }; // ADMIN sem tenant efetivo não deveria listar
+}
+
+/**
  * Valida a atribuição de papel numa criação/edição. Retorna erro adequado se o
  * papel for inválido (400) ou se o ator não puder concedê-lo (403).
  */

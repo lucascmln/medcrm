@@ -6,6 +6,7 @@ import {
   canAssignRole,
   canActOnUser,
   validateRoleAssignment,
+  userListScope,
 } from "./authz";
 
 test("isValidRole: aceita papéis conhecidos e rejeita o resto", () => {
@@ -68,4 +69,39 @@ test("SUPER_ADMIN pode atuar cross-tenant e sobre SUPER_ADMIN", () => {
   assert.equal(cross.ok, true);
   const onSuper = canActOnUser({ actorRole: "SUPER_ADMIN", isSuper: true, sameTenant: false, targetRole: "SUPER_ADMIN" });
   assert.equal(onSuper.ok, true);
+});
+
+// ── Listagem de usuários (GET /api/users) ─────────────────────────────────────
+
+test("ATTENDANT não pode listar usuários", () => {
+  assert.deepEqual(userListScope({ role: "ATTENDANT", effectiveTenantId: "t1" }), { allowed: false });
+});
+
+test("MANAGER não pode listar usuários (por enquanto)", () => {
+  assert.deepEqual(userListScope({ role: "MANAGER", effectiveTenantId: "t1" }), { allowed: false });
+});
+
+test("ADMIN lista APENAS usuários do próprio tenant efetivo", () => {
+  assert.deepEqual(userListScope({ role: "ADMIN", effectiveTenantId: "t1" }), {
+    allowed: true,
+    where: { tenantId: "t1" },
+  });
+  // Tenant diferente → where filtra pelo outro tenant (nunca vê t1).
+  assert.deepEqual(userListScope({ role: "ADMIN", effectiveTenantId: "t2" }), {
+    allowed: true,
+    where: { tenantId: "t2" },
+  });
+  // ADMIN sem tenant efetivo não lista.
+  assert.deepEqual(userListScope({ role: "ADMIN", effectiveTenantId: null }), { allowed: false });
+});
+
+test("SUPER_ADMIN lista pelo tenant efetivo/impersonado; global se nenhum", () => {
+  assert.deepEqual(userListScope({ role: "SUPER_ADMIN", effectiveTenantId: "t1" }), {
+    allowed: true,
+    where: { tenantId: "t1" },
+  });
+  assert.deepEqual(userListScope({ role: "SUPER_ADMIN", effectiveTenantId: null }), {
+    allowed: true,
+    where: {},
+  });
 });

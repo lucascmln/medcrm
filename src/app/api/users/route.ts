@@ -3,20 +3,23 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { getEffectiveTenantId } from "@/lib/tenant";
-import { canManageUsers, validateRoleAssignment } from "@/lib/authz";
+import { canManageUsers, validateRoleAssignment, userListScope } from "@/lib/authz";
 
 export async function GET(req: NextRequest) {
   try {
     const session = await auth();
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // SUPER_ADMIN with no impersonated tenant sees all users; otherwise scoped to tenant
-    const tenantId = getEffectiveTenantId(req, session);
-    if (!tenantId && session.user.role !== "SUPER_ADMIN") {
-      return NextResponse.json({ error: "No tenant" }, { status: 403 });
+    // Listagem restrita a ADMIN (próprio tenant) e SUPER_ADMIN (tenant efetivo/
+    // impersonado). ATTENDANT e MANAGER recebem 403.
+    const scope = userListScope({
+      role: session.user.role,
+      effectiveTenantId: getEffectiveTenantId(req, session),
+    });
+    if (!scope.allowed) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-
-    const where: any = tenantId ? { tenantId } : {};
+    const where: any = scope.where;
 
     const users = await prisma.user.findMany({
       where,
