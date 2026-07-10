@@ -10,7 +10,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveTenantId } from "@/lib/tenant";
 import { sendMessage, getProviderMode } from "@/lib/whatsapp-qr-provider";
-import { toProviderNumber } from "@/lib/whatsapp/phone";
+import { resolveSendNumber } from "@/lib/whatsapp/phone";
 
 export async function POST(
   req: NextRequest,
@@ -38,7 +38,7 @@ export async function POST(
 
   const conversation = await prisma.whatsAppConversation.findFirst({
     where: { id, tenantId },
-    select: { id: true, phone: true, instanceName: true },
+    select: { id: true, phone: true, instanceName: true, remoteJid: true },
   });
   if (!conversation) {
     return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
@@ -66,7 +66,9 @@ export async function POST(
   }
 
   const now = new Date();
-  const ok = await sendMessage(instanceName, toProviderNumber(conversation.phone), text);
+  // Prefere o remoteJid original de quem enviou; phone só como fallback.
+  const sendNumber = resolveSendNumber({ remoteJid: conversation.remoteJid, phone: conversation.phone });
+  const ok = await sendMessage(instanceName, sendNumber, text);
 
   const message = await prisma.whatsAppMessage.create({
     data: {

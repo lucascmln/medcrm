@@ -206,6 +206,7 @@ export async function POST(req: NextRequest) {
       tenantId,
       instanceName,
       phone,
+      remoteJid,
       contactName: msgData.pushName,
       text,
       type,

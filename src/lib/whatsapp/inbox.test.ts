@@ -45,16 +45,20 @@ class FakeStore implements InboxStore {
 
   async findConversation(tenantId: string, phone: string) {
     const c = this.conversations.find((x) => x.tenantId === tenantId && x.phone === phone);
-    return c ? { id: c.id, leadId: c.leadId, phone: c.phone, contactName: c.contactName, status: c.status } : null;
+    return c ? { id: c.id, leadId: c.leadId, phone: c.phone, contactName: c.contactName, status: c.status, remoteJid: c.remoteJid } : null;
   }
-  async createConversation(input: { tenantId: string; phone: string; contactName: string | null; instanceName: string | null; leadId: string | null }) {
-    const c = { id: this.id("conv"), tenantId: input.tenantId, leadId: input.leadId, phone: input.phone, contactName: input.contactName, status: "OPEN", unreadCount: 0, lastMessage: null as string | null };
+  async createConversation(input: { tenantId: string; phone: string; contactName: string | null; instanceName: string | null; leadId: string | null; remoteJid: string | null }) {
+    const c = { id: this.id("conv"), tenantId: input.tenantId, leadId: input.leadId, phone: input.phone, contactName: input.contactName, status: "OPEN", unreadCount: 0, lastMessage: null as string | null, remoteJid: input.remoteJid };
     this.conversations.push(c);
-    return { id: c.id, leadId: c.leadId, phone: c.phone, contactName: c.contactName, status: c.status };
+    return { id: c.id, leadId: c.leadId, phone: c.phone, contactName: c.contactName, status: c.status, remoteJid: c.remoteJid };
   }
   async linkConversationLead(conversationId: string, leadId: string) {
     const c = this.conversations.find((x) => x.id === conversationId);
     if (c) c.leadId = leadId;
+  }
+  async setConversationRemoteJid(conversationId: string, remoteJid: string) {
+    const c = this.conversations.find((x) => x.id === conversationId);
+    if (c) c.remoteJid = remoteJid;
   }
   async bumpConversationInbound(conversationId: string, input: { lastMessage: string; lastMessageAt: Date }) {
     const c = this.conversations.find((x) => x.id === conversationId);
@@ -153,6 +157,19 @@ test("conversa OPEN não gera evento de reabertura", async () => {
   const r2 = await processInboundMessage(store, { ...base, text: "2", externalMessageId: "b" });
   assert.equal(r2.conversationReopened, false);
   assert.ok(!store.history.some((h) => h.action === "WHATSAPP_REOPENED"));
+});
+
+test("armazena remoteJid ao criar conversa e faz backfill em conversa antiga", async () => {
+  const store = new FakeStore({ [T]: ["stage_novo"] });
+  const jid = "5562904225255654@s.whatsapp.net";
+  await processInboundMessage(store, { ...base, text: "1", externalMessageId: "a", remoteJid: jid });
+  assert.equal(store.conversations[0].remoteJid, jid);
+
+  // Simula conversa antiga sem remoteJid → próxima mensagem faz backfill.
+  store.conversations[0].remoteJid = null;
+  await processInboundMessage(store, { ...base, text: "2", externalMessageId: "b", remoteJid: jid });
+  assert.equal(store.conversations[0].remoteJid, jid); // backfill
+  assert.equal(store.conversations.length, 1); // não duplica
 });
 
 test("funil vazio lança erro", async () => {
