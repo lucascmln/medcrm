@@ -15,50 +15,46 @@ import {
   LogOut,
   Stethoscope,
   ChevronRight,
+  ChevronDown,
   ShieldCheck,
   CalendarDays,
   Bell,
   MessageCircle,
+  Briefcase,
+  SlidersHorizontal,
+  type LucideIcon,
 } from "lucide-react";
 import { cn, getInitials, avatarColor } from "@/lib/utils";
 import { BrandMark } from "@/components/shared/BrandMark";
+import {
+  primaryNav,
+  managementNav,
+  isNavGroup,
+  type NavEntry,
+  type NavGroup,
+} from "@/lib/nav";
 
-const navItems = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Leads", href: "/leads", icon: Users },
-  { label: "Funil / Kanban", href: "/kanban", icon: Kanban },
-  { label: "Mensagens WhatsApp", href: "/whatsapp", icon: MessageCircle },
-  { label: "Agenda", href: "/agenda", icon: CalendarDays },
-  { label: "Follow-up", href: "/follow-up", icon: Bell },
-  { label: "Relatórios", href: "/reports", icon: BarChart3 },
-];
+/** Mapa key (string, vindo de nav.ts) → componente de ícone Lucide. */
+const ICONS: Record<string, LucideIcon> = {
+  dashboard: LayoutDashboard,
+  commercial: Briefcase,
+  kanban: Kanban,
+  users: Users,
+  sliders: SlidersHorizontal,
+  whatsapp: MessageCircle,
+  calendar: CalendarDays,
+  bell: Bell,
+  chart: BarChart3,
+  "user-check": UserCheck,
+  stethoscope: Stethoscope,
+  building: Building2,
+  settings: Settings,
+};
 
-const managementItems = [
-  {
-    label: "Usuários",
-    href: "/users",
-    icon: UserCheck,
-    roles: ["SUPER_ADMIN", "ADMIN", "MANAGER"],
-  },
-  {
-    label: "Médicos",
-    href: "/doctors",
-    icon: Stethoscope,
-    roles: ["SUPER_ADMIN", "ADMIN", "MANAGER"],
-  },
-  {
-    label: "Unidades",
-    href: "/units",
-    icon: Building2,
-    roles: ["SUPER_ADMIN", "ADMIN"],
-  },
-  {
-    label: "Configurações",
-    href: "/settings",
-    icon: Settings,
-    roles: ["SUPER_ADMIN", "ADMIN"],
-  },
-];
+function Icon({ name, className }: { name: string; className?: string }) {
+  const C = ICONS[name] ?? LayoutDashboard;
+  return <C className={className} />;
+}
 
 function readCookie(name: string): string | null {
   if (typeof document === "undefined") return null;
@@ -85,6 +81,10 @@ export function Sidebar() {
     return pathname === href || pathname.startsWith(`${href}/`);
   }
 
+  function groupHasActiveChild(group: NavGroup) {
+    return group.children.some((c) => isActive(c.href));
+  }
+
   return (
     <aside className="fixed inset-y-0 left-0 z-40 w-60 bg-white border-r border-slate-200 flex flex-col">
       {/* Logo */}
@@ -103,57 +103,52 @@ export function Sidebar() {
         <p className="px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
           Principal
         </p>
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const active = isActive(item.href);
-          return (
+        {primaryNav.map((entry: NavEntry) =>
+          isNavGroup(entry) ? (
+            <NavGroupItem
+              key={entry.label}
+              group={entry}
+              isActive={isActive}
+              openByDefault={entry.defaultOpen || groupHasActiveChild(entry)}
+            />
+          ) : (
             <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "sidebar-link",
-                active && "sidebar-link-active"
-              )}
+              key={entry.href}
+              href={entry.href}
+              className={cn("sidebar-link", isActive(entry.href) && "sidebar-link-active")}
             >
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              <span>{item.label}</span>
-              {active && (
+              <Icon name={entry.icon} className="w-4 h-4 flex-shrink-0" />
+              <span>{entry.label}</span>
+              {isActive(entry.href) && (
                 <ChevronRight className="w-3 h-3 ml-auto text-primary-500" />
               )}
             </Link>
-          );
-        })}
+          )
+        )}
 
         <p className="px-3 pt-4 pb-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
           Gestão
         </p>
-        {managementItems
+        {managementNav
           .filter(
             (item) =>
               !item.roles ||
               item.roles.includes(userRole) ||
               userRole === "SUPER_ADMIN"
           )
-          .map((item) => {
-            const Icon = item.icon;
-            const active = isActive(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "sidebar-link",
-                  active && "sidebar-link-active"
-                )}
-              >
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                <span>{item.label}</span>
-                {active && (
-                  <ChevronRight className="w-3 h-3 ml-auto text-primary-500" />
-                )}
-              </Link>
-            );
-          })}
+          .map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn("sidebar-link", isActive(item.href) && "sidebar-link-active")}
+            >
+              <Icon name={item.icon} className="w-4 h-4 flex-shrink-0" />
+              <span>{item.label}</span>
+              {isActive(item.href) && (
+                <ChevronRight className="w-3 h-3 ml-auto text-primary-500" />
+              )}
+            </Link>
+          ))}
 
         {userRole === "SUPER_ADMIN" && (
           <>
@@ -200,5 +195,62 @@ export function Sidebar() {
         </div>
       </div>
     </aside>
+  );
+}
+
+/** Grupo expansível/colapsável no estilo Kommo (ex.: "Comercial"). */
+function NavGroupItem({
+  group,
+  isActive,
+  openByDefault,
+}: {
+  group: NavGroup;
+  isActive: (href: string) => boolean;
+  openByDefault: boolean;
+}) {
+  const [open, setOpen] = useState(openByDefault);
+
+  // Reabre automaticamente quando o usuário navega para uma rota filha.
+  useEffect(() => {
+    if (openByDefault) setOpen(true);
+  }, [openByDefault]);
+
+  const anyChildActive = group.children.some((c) => isActive(c.href));
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className={cn("sidebar-link w-full", anyChildActive && !open && "text-primary-700")}
+      >
+        <Icon name={group.icon} className="w-4 h-4 flex-shrink-0" />
+        <span>{group.label}</span>
+        {open ? (
+          <ChevronDown className="w-3.5 h-3.5 ml-auto text-slate-400" />
+        ) : (
+          <ChevronRight className="w-3.5 h-3.5 ml-auto text-slate-400" />
+        )}
+      </button>
+
+      {open && (
+        <div className="mt-1 ml-3 pl-3 border-l border-slate-100 space-y-1">
+          {group.children.map((child) => (
+            <Link
+              key={child.href}
+              href={child.href}
+              className={cn("sidebar-link", isActive(child.href) && "sidebar-link-active")}
+            >
+              <Icon name={child.icon} className="w-4 h-4 flex-shrink-0" />
+              <span>{child.label}</span>
+              {isActive(child.href) && (
+                <ChevronRight className="w-3 h-3 ml-auto text-primary-500" />
+              )}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

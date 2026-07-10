@@ -156,10 +156,12 @@ model FunnelStage {
   name      String
   color     String   @default("#64748b")
   order     Int
-  isDefault Boolean  @default(false)
-  isFinal   Boolean  @default(false)
-  isLost    Boolean  @default(false)
-  createdAt DateTime @default(now())
+  isDefault  Boolean  @default(false)
+  isFinal    Boolean  @default(false) // etapa de ganho / fechado
+  isLost     Boolean  @default(false)
+  isArchived Boolean  @default(false) @map("is_archived") // etapa arquivada (some do funil)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
   leads  Lead[]
@@ -266,6 +268,8 @@ model Lead {
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  // Soft delete: leads excluídos ficam com deletedAt != null e somem de listas/funil.
+  deletedAt   DateTime? @map("deleted_at")
 
   tenant      Tenant         @relation(fields: [tenantId], references: [id])
   unit        Unit?          @relation(fields: [unitId], references: [id])
@@ -286,6 +290,7 @@ model Lead {
   @@index([tenantId, createdAt])
   @@index([tenantId, funnelStageId])
   @@index([tenantId, trafficSource])
+  @@index([tenantId, deletedAt])
   @@map("leads")
 }
 

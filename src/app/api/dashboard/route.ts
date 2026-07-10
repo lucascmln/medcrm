@@ -15,6 +15,7 @@ import {
 } from "date-fns";
 import { getEffectiveTenantId } from "@/lib/tenant";
 import { normalizeTrafficSourceKey } from "@/lib/traffic-source-ui";
+import { activeLeadWhere } from "@/lib/leads-query";
 
 export async function GET(req: NextRequest) {
   // ── Auth ──────────────────────────────────────────────────────────────────
@@ -41,7 +42,8 @@ export async function GET(req: NextRequest) {
   const safeStart = startDate <= endDate ? startDate : endDate;
   const safeEnd   = startDate <= endDate ? endDate   : startDate;
 
-  const periodWhere: any = { tenantId, createdAt: { gte: safeStart, lte: safeEnd } };
+  // Soft delete: métricas nunca contam leads excluídos (activeLeadWhere injeta deletedAt: null).
+  const periodWhere: any = activeLeadWhere(tenantId, { createdAt: { gte: safeStart, lte: safeEnd } });
 
   // Immediately-preceding window of equal length, for period-over-period trends
   const rangeMs    = safeEnd.getTime() - safeStart.getTime();
@@ -74,12 +76,12 @@ export async function GET(req: NextRequest) {
           where: { tenantId, status: "SCHEDULED", scheduledAt: { gte: startOfDay(now) } },
         }),
         // Fixed calendar ranges — independent of the selected period filter
-        prisma.lead.count({ where: { tenantId, createdAt: { gte: startOfDay(now),          lte: endOfDay(now) } } }),
-        prisma.lead.count({ where: { tenantId, createdAt: { gte: startOfWeek(now, { weekStartsOn: 1 }), lte: endOfWeek(now, { weekStartsOn: 1 }) } } }),
-        prisma.lead.count({ where: { tenantId, createdAt: { gte: startOfMonth(now),         lte: endOfMonth(now) } } }),
+        prisma.lead.count({ where: activeLeadWhere(tenantId, { createdAt: { gte: startOfDay(now),          lte: endOfDay(now) } }) }),
+        prisma.lead.count({ where: activeLeadWhere(tenantId, { createdAt: { gte: startOfWeek(now, { weekStartsOn: 1 }), lte: endOfWeek(now, { weekStartsOn: 1 }) } }) }),
+        prisma.lead.count({ where: activeLeadWhere(tenantId, { createdAt: { gte: startOfMonth(now),         lte: endOfMonth(now) } }) }),
         // Previous-period comparisons
-        prisma.lead.count({ where: { tenantId, createdAt: { gte: prevStart, lte: prevEnd } } }),
-        prisma.lead.count({ where: { tenantId, closedAt: { gte: prevStart, lte: prevEnd } } }),
+        prisma.lead.count({ where: activeLeadWhere(tenantId, { createdAt: { gte: prevStart, lte: prevEnd } }) }),
+        prisma.lead.count({ where: activeLeadWhere(tenantId, { closedAt: { gte: prevStart, lte: prevEnd } }) }),
       ]);
   } catch (err) {
     console.error("[dashboard] Prisma query error for tenantId", tenantId, ":", err);

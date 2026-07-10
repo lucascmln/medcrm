@@ -68,7 +68,8 @@ export async function GET(req: NextRequest) {
     };
     const orderBy = SORT_MAP[sortBy] ?? { createdAt: "desc" };
 
-    const where: any = { tenantId: tenantId! };
+    // Soft delete: leads excluídos (deletedAt != null) nunca aparecem em listas.
+    const where: any = { tenantId: tenantId!, deletedAt: null };
 
     if (search.trim()) {
       // Case-insensitive partial match across name / phone / email / procedure.

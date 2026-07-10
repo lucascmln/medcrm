@@ -5,6 +5,7 @@ import { format, subMonths, eachDayOfInterval } from "date-fns";
 import { differenceInHours } from "date-fns";
 import { getEffectiveTenantId } from "@/lib/tenant";
 import { TRAFFIC_SOURCE_CONFIG, normalizeTrafficSourceKey } from "@/lib/traffic-source-ui";
+import { activeLeadWhere } from "@/lib/leads-query";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -21,7 +22,8 @@ export async function GET(req: NextRequest) {
   const startDate = startDateParam ? new Date(startDateParam) : subMonths(new Date(), 1);
   const endDate = endDateParam ? new Date(endDateParam + "T23:59:59") : new Date();
 
-  const where: any = { tenantId, createdAt: { gte: startDate, lte: endDate } };
+  // Soft delete: relatórios de leads nunca contam leads excluídos.
+  const where: any = activeLeadWhere(tenantId, { createdAt: { gte: startDate, lte: endDate } });
 
   // ──────────────────────────────
   // POR ORIGEM
@@ -51,7 +53,7 @@ export async function GET(req: NextRequest) {
     const stages = await prisma.funnelStage.findMany({ where: { tenantId }, orderBy: { order: "asc" } });
     const counts = await prisma.lead.groupBy({
       by: ["funnelStageId"],
-      where: { tenantId },
+      where: activeLeadWhere(tenantId),
       _count: true,
     });
     const countMap = new Map(counts.map((c) => [c.funnelStageId, c._count]));
