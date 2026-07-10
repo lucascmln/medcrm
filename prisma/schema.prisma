@@ -456,7 +456,8 @@ model WhatsAppConversation {
   tenantId      String    @map("tenant_id")
   leadId        String?   @map("lead_id")
   instanceName  String?   @map("instance_name")
-  remoteJid     String?   @map("remote_jid") // JID original do WhatsApp (envio outbound confiável)
+  remoteJid     String?   @map("remote_jid") // JID original do WhatsApp (pode ser @lid, NÃO discável)
+  sendTargetJid String?   @map("send_target_jid") // melhor JID discável (@s.whatsapp.net/@c.us) p/ outbound
   phone         String // normalizado: +55DDDNUMERO
   contactName   String?   @map("contact_name")
   status        String    @default("OPEN")
@@ -492,6 +493,7 @@ model WhatsAppMessage {
   body              String?
   mediaUrl          String?   @map("media_url")
   status            String?
+  providerError     String?   @map("provider_error") // erro resumido do provider p/ mensagens FAILED
   sentAt            DateTime? @map("sent_at")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
