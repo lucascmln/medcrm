@@ -30,3 +30,33 @@ test("isLeadVisible: lead ativo é visível", () => {
   assert.equal(isLeadVisible({ deletedAt: null }), true);
   assert.equal(isLeadVisible({}), true);
 });
+
+// ── Métricas (dashboard / relatórios / KPIs) ──────────────────────────────────
+// Dashboard e relatórios contam leads via activeLeadWhere(tenantId, ...), que
+// sempre injeta deletedAt: null. Estes testes modelam essa contagem.
+
+/** Conta apenas leads ATIVOS, como as métricas fazem via `deletedAt: null`. */
+function countLeadsForMetrics(leads: Array<{ deletedAt?: Date | string | null }>): number {
+  return leads.filter(isLeadVisible).length;
+}
+
+const SAMPLE = [
+  { id: "a", deletedAt: null },
+  { id: "b", deletedAt: null },
+  { id: "c", deletedAt: new Date() }, // excluído
+];
+
+test("KPIs: lead com deletedAt preenchido NÃO entra na contagem", () => {
+  assert.equal(countLeadsForMetrics(SAMPLE), 2);
+});
+
+test("relatórios: filtro activeLeadWhere sempre exclui leads excluídos", () => {
+  // Qualquer relatório de leads usa este where — deletedAt: null é garantido.
+  const w = activeLeadWhere("t1", { createdAt: { gte: new Date(0) } });
+  assert.equal(w.deletedAt, null);
+});
+
+test("lead ativo continua contando normalmente nas métricas", () => {
+  const onlyActive = [{ id: "x", deletedAt: null }, { id: "y", deletedAt: undefined }];
+  assert.equal(countLeadsForMetrics(onlyActive), 2);
+});

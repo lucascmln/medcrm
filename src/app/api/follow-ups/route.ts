@@ -88,6 +88,7 @@ export async function PATCH(req: NextRequest) {
     const leadsNeedingFollowUp = await prisma.lead.findMany({
       where: {
         tenantId,
+        deletedAt: null, // não gera follow-up automático para leads excluídos
         createdAt:  { lte: twoDaysAgo },
         scheduledAt: null,
         followUps:  { none: {} },
