@@ -336,20 +336,49 @@ export async function configureWebhook(instanceName: string): Promise<void> {
 }
 
 /**
- * Envia mensagem de texto via WhatsApp (opcional — para uso futuro).
+ * Remove qualquer ocorrência de segredos (API key) de uma string antes de
+ * logar/retornar. Defesa em profundidade — a Evolution normalmente não ecoa a
+ * key, mas nunca confiamos nisso.
+ */
+function redactSecrets(text: string): string {
+  const key = process.env.EVOLUTION_API_KEY;
+  let out = text;
+  if (key && key.length >= 6) out = out.split(key).join("***");
+  return out;
+}
+
+export interface SendMessageResult {
+  ok: boolean;
+  /** Status HTTP do provider, quando houve resposta. */
+  status?: number;
+  /** Erro resumido e SEM secrets, para log/UI. Presente apenas em falha. */
+  providerError?: string;
+}
+
+/**
+ * Envia mensagem de texto via WhatsApp pela Evolution API.
+ *
+ * `to` deve ser SÓ dígitos com DDI (ex.: "5511987654321"), já validado como
+ * discável pela camada de rota (`resolveWhatsAppSendTarget`) — nunca um `@lid`.
+ *
+ * Em falha, retorna `{ ok:false, status, providerError }` com o corpo do
+ * provider resumido e redigido, para que o 502 do CRM seja útil ao debug sem
+ * vazar a API key.
  */
 export async function sendMessage(
   instanceName: string,
   to: string,       // número no formato internacional sem +, ex: "5511987654321"
   text: string
-): Promise<boolean> {
+): Promise<SendMessageResult> {
   if (getProviderMode() === "mock") {
     console.log(`[whatsapp-qr:mock] sendMessage → ${to}: ${text.slice(0, 80)}`);
-    return true;
+    return { ok: true };
   }
 
   const config = getProviderConfig();
-  if (!config) return false;
+  if (!config) {
+    return { ok: false, providerError: "Provider não configurado" };
+  }
 
   try {
     const res = await evolutionFetch(
@@ -363,9 +392,25 @@ export async function sendMessage(
         }),
       }
     );
-    return res.ok;
-  } catch {
-    return false;
+
+    if (res.ok) return { ok: true, status: res.status };
+
+    // Captura o corpo real do erro do provider (escondido antes atrás do 502).
+    let rawBody = "";
+    try { rawBody = await res.text(); } catch {}
+    const providerError = redactSecrets(rawBody).replace(/\s+/g, " ").trim().slice(0, 300);
+    console.error(
+      `[whatsapp-qr] sendText falhou: status=${res.status} body=${providerError || "(vazio)"}`
+    );
+    return {
+      ok: false,
+      status: res.status,
+      providerError: providerError || `Provider retornou HTTP ${res.status}`,
+    };
+  } catch (err: any) {
+    const providerError = redactSecrets(String(err?.message ?? "erro de rede")).slice(0, 300);
+    console.error(`[whatsapp-qr] sendText exceção: ${providerError}`);
+    return { ok: false, providerError };
   }
 }
 
