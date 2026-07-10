@@ -156,6 +156,7 @@ function extractDialableFromPayload(raw: string): DialableHit | null {
 
 interface ConvRow {
   id: string;
+  tenant_id: string;
   lead_id: string | null;
   phone: string | null;
   remote_jid: string | null;
@@ -173,8 +174,9 @@ interface Proposal {
   decision: "AUTO_FIX_READY" | "NEEDS_MANUAL_MAPPING";
   sourceField: string | null;
   proposedSendTargetJid: string | null;
-  proposedRemoteJid: string | null; // só difere se remote_jid estava vazio
-  proposedLeadPhone: string | null; // só se telefone real confiável e diferente
+  proposedRemoteJid: string | null; // difere se remote_jid estava vazio ou era @lid
+  proposedPhone: string | null; // conversa: E.164 do senderPn, se o atual for opaco
+  proposedLeadPhone: string | null; // lead: E.164 do senderPn, se o atual for opaco
   reason: string;
 }
 
@@ -249,7 +251,7 @@ async function main() {
 
     const stSelect = hasSendTarget ? "c.send_target_jid" : "NULL::text AS send_target_jid";
     const convs = await prisma.$queryRawUnsafe<ConvRow[]>(
-      `SELECT c.id, c.lead_id, c.phone, c.remote_jid, ${stSelect},
+      `SELECT c.id, c.tenant_id, c.lead_id, c.phone, c.remote_jid, ${stSelect},
               c.instance_name, c.contact_name, c.status, c.created_at,
               l.name AS lead_name, l.phone AS lead_phone
        FROM whatsapp_conversations c
@@ -303,21 +305,26 @@ async function main() {
       }
 
       if (hit) {
-        const proposedPhone = normalizePhone(hit.jid);
-        const leadPhoneOpaque = isOpaquePhone(c.lead_phone, c.remote_jid);
-        // Só propõe trocar lead.phone se for telefone real E o atual for opaco/diferente.
+        const realPhone = normalizePhone(hit.jid); // E.164 extraído do senderPn discável
+        const realIsDialable = looksLikeDialablePhone(realPhone);
+        // Conversa: troca phone se o atual for opaco/errado (ou vazio) e diferente.
+        const convPhoneOpaque = isOpaquePhone(c.phone, c.remote_jid) || !c.phone;
+        const proposedPhone =
+          realIsDialable && realPhone !== (c.phone ?? "") && convPhoneOpaque ? realPhone : null;
+        // Lead: mesma regra — só se o lead.phone atual for opaco/errado.
+        const leadPhoneOpaque = isOpaquePhone(c.lead_phone, c.remote_jid) || !c.lead_phone;
         const proposedLeadPhone =
-          looksLikeDialablePhone(proposedPhone) &&
-          proposedPhone !== (c.lead_phone ?? "") &&
-          (leadPhoneOpaque || !c.lead_phone)
-            ? proposedPhone
-            : null;
+          realIsDialable && realPhone !== (c.lead_phone ?? "") && leadPhoneOpaque ? realPhone : null;
+        // remoteJid: troca quando estava vazio OU era @lid (identificador opaco).
+        const proposedRemoteJid =
+          !c.remote_jid || isLidJid(c.remote_jid) ? hit.jid : c.remote_jid;
         proposals.push({
           row: c,
           decision: "AUTO_FIX_READY",
           sourceField: hit.field,
           proposedSendTargetJid: hit.jid,
-          proposedRemoteJid: !c.remote_jid ? hit.jid : c.remote_jid,
+          proposedRemoteJid,
+          proposedPhone,
           proposedLeadPhone,
           reason: `destino discável encontrado em ${hit.field}`,
         });
@@ -328,6 +335,7 @@ async function main() {
           sourceField: null,
           proposedSendTargetJid: null,
           proposedRemoteJid: c.remote_jid,
+          proposedPhone: null,
           proposedLeadPhone: null,
           reason: isLidJid(c.remote_jid)
             ? "remoteJid é @lid e nenhum payload com número discável (@s.whatsapp.net) foi encontrado"
@@ -350,8 +358,10 @@ async function main() {
       console.log(`    ── proposto ──`);
       console.log(`    sendTarget novo: ${mask(p.proposedSendTargetJid)}   (origem: ${p.sourceField ?? "—"})`);
       if (p.proposedRemoteJid !== c.remote_jid) {
-        console.log(`    remoteJid novo : ${mask(p.proposedRemoteJid)}   (estava vazio)`);
+        const why = !c.remote_jid ? "estava vazio" : "era @lid";
+        console.log(`    remoteJid novo : ${mask(p.proposedRemoteJid)}   (${why})`);
       }
+      console.log(`    phone conv novo: ${p.proposedPhone ? mask(p.proposedPhone) : "(inalterado)"}`);
       console.log(`    lead.phone at. : ${mask(c.lead_phone)}`);
       console.log(`    lead.phone novo: ${p.proposedLeadPhone ? mask(p.proposedLeadPhone) : "(inalterado)"}`);
       console.log(`    motivo         : ${p.reason}`);
@@ -380,11 +390,10 @@ async function main() {
     if (autoFix.length > 0) {
       console.log("\n── UPDATEs que seriam aplicados (--apply --force) ──");
       autoFix.forEach((p) => {
-        console.log(
-          `  UPDATE whatsapp_conversations SET send_target_jid=${mask(p.proposedSendTargetJid)}` +
-            (p.proposedRemoteJid !== p.row.remote_jid ? `, remote_jid=${mask(p.proposedRemoteJid)}` : "") +
-            ` WHERE id=${p.row.id};`
-        );
+        const sets = [`send_target_jid=${mask(p.proposedSendTargetJid)}`];
+        if (p.proposedRemoteJid !== p.row.remote_jid) sets.push(`remote_jid=${mask(p.proposedRemoteJid)}`);
+        if (p.proposedPhone) sets.push(`phone=${mask(p.proposedPhone)}`);
+        console.log(`  UPDATE whatsapp_conversations SET ${sets.join(", ")} WHERE id=${p.row.id};`);
         if (p.proposedLeadPhone && p.row.lead_id) {
           console.log(
             `  UPDATE leads SET phone=${mask(p.proposedLeadPhone)} WHERE id=${p.row.lead_id};`
@@ -403,11 +412,32 @@ async function main() {
       }
       console.log("\n▶ Aplicando correções AUTO_FIX_READY...");
       for (const p of autoFix) {
+        // Guarda do unique (tenant_id, phone): só troca o phone da conversa se
+        // NENHUMA outra conversa do mesmo tenant já usa o número real. Se houver
+        // colisão, mantém o phone antigo (sendTargetJid já resolve o outbound).
+        let applyPhone = p.proposedPhone;
+        if (applyPhone) {
+          const clash = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+            `SELECT id FROM whatsapp_conversations
+             WHERE tenant_id = $1 AND phone = $2 AND id <> $3 LIMIT 1`,
+            p.row.tenant_id,
+            applyPhone,
+            p.row.id
+          );
+          if (clash.length > 0) {
+            console.log(
+              `  ⚠ ${p.row.id}: phone ${mask(applyPhone)} já existe em outra conversa (${clash[0].id}) — mantendo phone antigo; sendTargetJid resolve o envio.`
+            );
+            applyPhone = null;
+          }
+        }
+
         await prisma.whatsAppConversation.update({
           where: { id: p.row.id },
           data: {
             sendTargetJid: p.proposedSendTargetJid,
             ...(p.proposedRemoteJid !== p.row.remote_jid ? { remoteJid: p.proposedRemoteJid } : {}),
+            ...(applyPhone ? { phone: applyPhone } : {}),
           },
         });
         if (p.proposedLeadPhone && p.row.lead_id) {
