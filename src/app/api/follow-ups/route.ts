@@ -47,6 +47,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Lead e data são obrigatórios" }, { status: 400 });
     }
 
+    // O lead precisa ser ATIVO e do mesmo tenant.
+    const lead = await prisma.lead.findFirst({
+      where: { id: body.leadId, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!lead) {
+      return NextResponse.json({ error: "Lead inválido" }, { status: 400 });
+    }
+
     const followUp = await prisma.followUp.create({
       data: {
         tenantId,
@@ -63,8 +72,8 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    await prisma.lead.update({
-      where: { id: body.leadId },
+    await prisma.lead.updateMany({
+      where: { id: body.leadId, tenantId, deletedAt: null },
       data:  { lastInteractionAt: new Date() },
     });
 
@@ -94,23 +103,22 @@ export async function PATCH(req: NextRequest) {
         followUps:  { none: {} },
         funnelStage: { isLost: false, isFinal: false },
       },
-      select: { id: true, name: true },
+      select: { id: true },
+      take: 500, // limita o lote por execução (evita processamento ilimitado)
     });
 
-    let created = 0;
-    for (const lead of leadsNeedingFollowUp) {
-      await prisma.followUp.create({
-        data: {
-          tenantId,
-          leadId: lead.id,
-          dueAt:  new Date(),
-          notes:  "Follow-up automático — lead sem agendamento há mais de 2 dias",
-          isAuto: true,
-          status: "PENDING",
-        },
-      });
-      created++;
-    }
+    // Inserção em lote — 1 query em vez de N (era N+1 com create por lead).
+    const now = new Date();
+    const { count: created } = await prisma.followUp.createMany({
+      data: leadsNeedingFollowUp.map((lead) => ({
+        tenantId,
+        leadId: lead.id,
+        dueAt:  now,
+        notes:  "Follow-up automático — lead sem agendamento há mais de 2 dias",
+        isAuto: true,
+        status: "PENDING",
+      })),
+    });
 
     return NextResponse.json({ created });
   } catch (err) {

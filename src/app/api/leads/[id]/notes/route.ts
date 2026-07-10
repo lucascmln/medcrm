@@ -12,8 +12,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const { id } = await params;
 
-    // Verify lead belongs to this tenant
-    const lead = await prisma.lead.findFirst({ where: { id, tenantId } });
+    // Verify lead belongs to this tenant e não foi excluído
+    const lead = await prisma.lead.findFirst({ where: { id, tenantId, deletedAt: null } });
     if (!lead) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const notes = await prisma.leadNote.findMany({
@@ -37,8 +37,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const { id } = await params;
 
-    // Verify lead belongs to this tenant
-    const lead = await prisma.lead.findFirst({ where: { id, tenantId } });
+    // Verify lead belongs to this tenant e não foi excluído
+    const lead = await prisma.lead.findFirst({ where: { id, tenantId, deletedAt: null } });
     if (!lead) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const body = await req.json();

@@ -366,6 +366,8 @@ model Appointment {
   lead   Lead?  @relation(fields: [leadId], references: [id])
   user   User?  @relation(fields: [userId], references: [id])
 
+  @@index([tenantId, scheduledAt])
+  @@index([tenantId, status, scheduledAt])
   @@map("appointments")
 }
 
@@ -389,6 +391,8 @@ model FollowUp {
   lead   Lead   @relation(fields: [leadId], references: [id])
   user   User?  @relation(fields: [userId], references: [id])
 
+  @@index([tenantId, status, dueAt])
+  @@index([tenantId, leadId])
   @@map("follow_ups")
 }
 
@@ -478,6 +482,7 @@ model WhatsAppConversation {
 
   @@unique([tenantId, phone])
   @@index([tenantId, status, lastMessageAt])
+  @@index([tenantId, leadId])
   @@map("whatsapp_conversations")
 }
 

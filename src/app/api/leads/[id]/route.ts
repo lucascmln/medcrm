@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveTenantId } from "@/lib/tenant";
+import { stripProtectedLeadFields } from "@/lib/leads-query";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -60,7 +61,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     });
     if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    const updateData: any = { ...data };
+    // Segurança: impede mass-assignment de campos sensíveis via corpo da request
+    // (mover de tenant, "des-excluir", forjar timestamps/identidade).
+    const updateData: any = stripProtectedLeadFields(data);
     delete updateData.tagIds;
 
     if (data.potentialValue !== undefined) {
@@ -68,8 +71,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     if (data.funnelStageId && data.funnelStageId !== current.funnelStageId) {
-      const newStage = await prisma.funnelStage.findUnique({ where: { id: data.funnelStageId } });
-      if (newStage) {
+      // A etapa alvo precisa pertencer ao MESMO tenant e não estar arquivada
+      // (evita mover o lead para etapa de outro tenant ou para etapa oculta).
+      const newStage = await prisma.funnelStage.findFirst({
+        where: { id: data.funnelStageId, tenantId, isArchived: false },
+      });
+      if (!newStage) {
+        return NextResponse.json({ error: "Etapa inválida" }, { status: 400 });
+      }
+      {
         if (newStage.isLost && !current.lostAt) updateData.lostAt = new Date();
         if (!newStage.isLost && !newStage.isFinal) {
           const name = newStage.name.toLowerCase();

@@ -133,7 +133,10 @@ export async function PUT(req: NextRequest) {
         if (s.isFinal !== undefined) data.isFinal = s.isFinal;
         if (s.isLost !== undefined) data.isLost = s.isLost;
         if (s.isArchived !== undefined) data.isArchived = s.isArchived;
-        if (s.isDefault !== undefined) data.isDefault = s.isDefault;
+        // Garante exatamente UMA etapa inicial: se alguma foi marcada como
+        // default, só ela fica true (as demais false); senão, respeita o valor.
+        if (newDefaultId) data.isDefault = s.id === newDefaultId;
+        else if (s.isDefault !== undefined) data.isDefault = s.isDefault;
         if (Object.keys(data).length === 0) continue;
         // Escopado por tenant — nunca toca etapa de outro tenant.
         await tx.funnelStage.updateMany({ where: { id: s.id, tenantId }, data });
@@ -173,22 +176,36 @@ export async function DELETE(req: NextRequest) {
     });
 
     const decision = canDeleteStage(activeLeads);
-    if (!decision.ok) {
-      if (!moveTo) {
+    if (!decision.ok && !moveTo) {
+      return NextResponse.json(
+        { error: decision.reason ?? STAGE_HAS_LEADS_MESSAGE, leadCount: activeLeads },
+        { status: 409 }
+      );
+    }
+
+    // `funnelStageId` é FK obrigatória (inclusive em leads soft-deleted). Antes de
+    // excluir a etapa, TODO lead que a referencia — ativo OU excluído — precisa ser
+    // repontado, senão a exclusão viola a FK (P2003 → 500).
+    const anyLeads = await prisma.lead.count({ where: { tenantId, funnelStageId: id } });
+
+    if (anyLeads > 0) {
+      // Destino: o informado (não arquivado) ou um fallback (inicial/primeira etapa).
+      const target = moveTo
+        ? await prisma.funnelStage.findFirst({ where: { id: moveTo, tenantId, isArchived: false } })
+        : await prisma.funnelStage.findFirst({
+            where: { tenantId, id: { not: id } },
+            orderBy: [{ isDefault: "desc" }, { order: "asc" }],
+          });
+      if (!target || target.id === id) {
         return NextResponse.json(
-          { error: decision.reason ?? STAGE_HAS_LEADS_MESSAGE, leadCount: activeLeads },
-          { status: 409 }
+          { error: "Etapa destino inválida — informe outra etapa para mover os leads", leadCount: activeLeads },
+          { status: 400 }
         );
       }
-      // Move os leads ativos para a etapa destino (validada por tenant) e exclui.
-      const target = await prisma.funnelStage.findFirst({ where: { id: moveTo, tenantId } });
-      if (!target) return NextResponse.json({ error: "Etapa destino inválida" }, { status: 400 });
-      if (target.id === id) return NextResponse.json({ error: "Etapa destino não pode ser a mesma" }, { status: 400 });
-
       await prisma.$transaction([
         prisma.lead.updateMany({
-          where: { tenantId, funnelStageId: id, deletedAt: null },
-          data: { funnelStageId: moveTo },
+          where: { tenantId, funnelStageId: id }, // ativos + soft-deleted
+          data: { funnelStageId: target.id },
         }),
         prisma.funnelStage.deleteMany({ where: { id, tenantId } }),
       ]);

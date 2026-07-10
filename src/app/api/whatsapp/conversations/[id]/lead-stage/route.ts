@@ -42,18 +42,18 @@ export async function PATCH(
     return NextResponse.json({ error: "Conversa sem lead vinculado" }, { status: 409 });
   }
 
-  // A etapa alvo precisa pertencer ao mesmo tenant.
+  // A etapa alvo precisa pertencer ao mesmo tenant e não estar arquivada.
   const targetStage = await prisma.funnelStage.findFirst({
-    where: { id: funnelStageId, tenantId },
+    where: { id: funnelStageId, tenantId, isArchived: false },
     select: { id: true, name: true },
   });
   if (!targetStage) {
     return NextResponse.json({ error: "Etapa inválida" }, { status: 400 });
   }
 
-  // Lead atual (para registrar fromStage → toStage).
+  // Lead atual (ATIVO) para registrar fromStage → toStage.
   const lead = await prisma.lead.findFirst({
-    where: { id: conversation.leadId, tenantId },
+    where: { id: conversation.leadId, tenantId, deletedAt: null },
     select: { id: true, funnelStageId: true, funnelStage: { select: { name: true } } },
   });
   if (!lead) {
