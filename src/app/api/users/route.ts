@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { getEffectiveTenantId } from "@/lib/tenant";
+import { canManageUsers, validateRoleAssignment } from "@/lib/authz";
 
 export async function GET(req: NextRequest) {
   try {
@@ -38,14 +39,10 @@ export async function POST(req: NextRequest) {
     const session = await auth();
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const allowed = ["SUPER_ADMIN", "ADMIN"];
-    if (!allowed.includes(session.user.role)) {
+    const actorRole = session.user.role;
+    const isSuper = actorRole === "SUPER_ADMIN";
+    if (!canManageUsers(actorRole)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const tenantId = getEffectiveTenantId(req, session);
-    if (!tenantId && session.user.role !== "SUPER_ADMIN") {
-      return NextResponse.json({ error: "No tenant" }, { status: 403 });
     }
 
     const body = await req.json();
@@ -55,15 +52,41 @@ export async function POST(req: NextRequest) {
     if (!body.password || body.password.length < 6) {
       return NextResponse.json({ error: "Senha deve ter no mínimo 6 caracteres" }, { status: 400 });
     }
+
+    // Papel: valida e impede ADMIN de criar SUPER_ADMIN.
+    const requestedRole = body.role ?? "ATTENDANT";
+    const roleCheck = validateRoleAssignment(actorRole, requestedRole);
+    if (!roleCheck.ok) {
+      return NextResponse.json({ error: roleCheck.error }, { status: roleCheck.status });
+    }
+
+    // Tenant: ADMIN é SEMPRE forçado ao próprio tenant (ignora body.tenantId).
+    // SUPER_ADMIN usa o tenant impersonado (cookie) ou um body.tenantId validado.
+    let targetTenantId: string | null;
+    if (isSuper) {
+      targetTenantId = getEffectiveTenantId(req, session) ?? (body.tenantId || null);
+      if (targetTenantId) {
+        const t = await prisma.tenant.findUnique({ where: { id: targetTenantId }, select: { id: true } });
+        if (!t) return NextResponse.json({ error: "Tenant inválido" }, { status: 400 });
+      }
+      // Usuários não-SUPER_ADMIN precisam pertencer a um tenant.
+      if (requestedRole !== "SUPER_ADMIN" && !targetTenantId) {
+        return NextResponse.json({ error: "tenantId é obrigatório para este usuário" }, { status: 400 });
+      }
+    } else {
+      targetTenantId = getEffectiveTenantId(req, session);
+      if (!targetTenantId) return NextResponse.json({ error: "No tenant" }, { status: 403 });
+    }
+
     const hashed = await bcrypt.hash(body.password, 10);
 
     const user = await prisma.user.create({
       data: {
-        tenantId: tenantId ?? body.tenantId,
+        tenantId: targetTenantId,
         name:     body.name,
         email:    body.email,
         password: hashed,
-        role:     body.role ?? "ATTENDANT",
+        role:     requestedRole,
         unitId:   body.unitId || null,
       },
       select: {

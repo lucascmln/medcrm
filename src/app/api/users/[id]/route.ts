@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { getEffectiveTenantId } from "@/lib/tenant";
+import { canActOnUser, validateRoleAssignment } from "@/lib/authz";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -36,6 +37,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const session = await auth();
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const actorRole = session.user.role;
+    const isSuper = actorRole === "SUPER_ADMIN";
     const tenantId = getEffectiveTenantId(req, session);
 
     const { id } = await params;
@@ -43,17 +46,31 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    if (existing.tenantId !== tenantId && session.user.role !== "SUPER_ADMIN") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
 
+    // Autorização: precisa poder gerenciar usuários; escopo de tenant; ADMIN não
+    // pode editar SUPER_ADMIN.
+    const gate = canActOnUser({
+      actorRole,
+      isSuper,
+      sameTenant: existing.tenantId === tenantId,
+      targetRole: existing.role,
+    });
+    if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
+
+    // Whitelist de campos — tenantId NUNCA é atualizável aqui (impede mover de
+    // tenant / auto-promoção via campo oculto).
     const updateData: any = {};
     if (body.name)               updateData.name     = body.name;
     if (body.email)              updateData.email    = body.email;
-    if (body.role)               updateData.role     = body.role;
     if (body.unitId !== undefined) updateData.unitId = body.unitId || null;
     if (body.isActive !== undefined) updateData.isActive = body.isActive;
     if (body.password)           updateData.password = await bcrypt.hash(body.password, 10);
+    if (body.role !== undefined && body.role !== existing.role) {
+      // Só troca de papel com permissão (ADMIN não pode promover a SUPER_ADMIN).
+      const roleCheck = validateRoleAssignment(actorRole, body.role);
+      if (!roleCheck.ok) return NextResponse.json({ error: roleCheck.error }, { status: roleCheck.status });
+      updateData.role = body.role;
+    }
 
     const user = await prisma.user.update({
       where: { id },
@@ -77,6 +94,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   try {
     const session = await auth();
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const actorRole = session.user.role;
+    const isSuper = actorRole === "SUPER_ADMIN";
     const tenantId = getEffectiveTenantId(req, session);
 
     const { id } = await params;
@@ -86,10 +105,18 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    if (existing.tenantId !== tenantId && session.user.role !== "SUPER_ADMIN") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
 
+    // Autorização: gerência de usuários + escopo de tenant + ADMIN não desativa
+    // SUPER_ADMIN.
+    const gate = canActOnUser({
+      actorRole,
+      isSuper,
+      sameTenant: existing.tenantId === tenantId,
+      targetRole: existing.role,
+    });
+    if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
+
+    // Soft delete / desativação (padrão do projeto) — não apaga dados relacionados.
     await prisma.user.update({ where: { id }, data: { isActive: false } });
     return NextResponse.json({ success: true });
   } catch (err) {
