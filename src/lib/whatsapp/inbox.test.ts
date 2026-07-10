@@ -45,12 +45,12 @@ class FakeStore implements InboxStore {
 
   async findConversation(tenantId: string, phone: string) {
     const c = this.conversations.find((x) => x.tenantId === tenantId && x.phone === phone);
-    return c ? { id: c.id, leadId: c.leadId, phone: c.phone, contactName: c.contactName, status: c.status, remoteJid: c.remoteJid } : null;
+    return c ? { id: c.id, leadId: c.leadId, phone: c.phone, contactName: c.contactName, status: c.status, remoteJid: c.remoteJid, sendTargetJid: c.sendTargetJid } : null;
   }
-  async createConversation(input: { tenantId: string; phone: string; contactName: string | null; instanceName: string | null; leadId: string | null; remoteJid: string | null }) {
-    const c = { id: this.id("conv"), tenantId: input.tenantId, leadId: input.leadId, phone: input.phone, contactName: input.contactName, status: "OPEN", unreadCount: 0, lastMessage: null as string | null, remoteJid: input.remoteJid };
+  async createConversation(input: { tenantId: string; phone: string; contactName: string | null; instanceName: string | null; leadId: string | null; remoteJid: string | null; sendTargetJid: string | null }) {
+    const c = { id: this.id("conv"), tenantId: input.tenantId, leadId: input.leadId, phone: input.phone, contactName: input.contactName, status: "OPEN", unreadCount: 0, lastMessage: null as string | null, remoteJid: input.remoteJid, sendTargetJid: input.sendTargetJid };
     this.conversations.push(c);
-    return { id: c.id, leadId: c.leadId, phone: c.phone, contactName: c.contactName, status: c.status, remoteJid: c.remoteJid };
+    return { id: c.id, leadId: c.leadId, phone: c.phone, contactName: c.contactName, status: c.status, remoteJid: c.remoteJid, sendTargetJid: c.sendTargetJid };
   }
   async linkConversationLead(conversationId: string, leadId: string) {
     const c = this.conversations.find((x) => x.id === conversationId);
@@ -59,6 +59,10 @@ class FakeStore implements InboxStore {
   async setConversationRemoteJid(conversationId: string, remoteJid: string) {
     const c = this.conversations.find((x) => x.id === conversationId);
     if (c) c.remoteJid = remoteJid;
+  }
+  async setConversationSendTarget(conversationId: string, sendTargetJid: string) {
+    const c = this.conversations.find((x) => x.id === conversationId);
+    if (c) c.sendTargetJid = sendTargetJid;
   }
   async bumpConversationInbound(conversationId: string, input: { lastMessage: string; lastMessageAt: Date }) {
     const c = this.conversations.find((x) => x.id === conversationId);

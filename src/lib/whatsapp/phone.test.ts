@@ -7,6 +7,13 @@ import {
   toProviderNumber,
   jidToNumber,
   resolveSendNumber,
+  isLidJid,
+  isDialableJid,
+  looksLikeDialablePhone,
+  pickDialableJid,
+  resolveWhatsAppSendTarget,
+  resolveInboundIdentity,
+  NO_DIALABLE_TARGET_ERROR,
 } from "./phone";
 
 test("normalizePhone: extrai dígitos de um JID do WhatsApp", () => {
@@ -89,4 +96,136 @@ test("resolveSendNumber: cai no phone quando não há remoteJid", () => {
 test("resolveSendNumber: nunca remove o 55 automaticamente", () => {
   const out = resolveSendNumber({ remoteJid: "5562904225255654@s.whatsapp.net", phone: null });
   assert.ok(out.startsWith("55"), `esperava começar com 55, veio: ${out}`);
+});
+
+// ── LID / detecção de JID discável ────────────────────────────────────────────
+
+test("isLidJid: reconhece @lid como identificador opaco", () => {
+  assert.equal(isLidJid("195223946834081@lid"), true);
+  assert.equal(isLidJid("5511987654321@s.whatsapp.net"), false);
+  assert.equal(isLidJid(null), false);
+});
+
+test("isDialableJid: só @s.whatsapp.net e @c.us são discáveis", () => {
+  assert.equal(isDialableJid("5511987654321@s.whatsapp.net"), true);
+  assert.equal(isDialableJid("5511987654321@c.us"), true);
+  assert.equal(isDialableJid("195223946834081@lid"), false);
+  assert.equal(isDialableJid("123@g.us"), false);
+  assert.equal(isDialableJid(null), false);
+});
+
+test("looksLikeDialablePhone: comprimento plausível de E.164", () => {
+  assert.equal(looksLikeDialablePhone("5511987654321"), true);
+  assert.equal(looksLikeDialablePhone("+55 11 98765-4321"), true);
+  assert.equal(looksLikeDialablePhone("123"), false); // curto demais
+  assert.equal(looksLikeDialablePhone("1952239468340812345"), false); // longo demais
+  assert.equal(looksLikeDialablePhone(""), false);
+});
+
+test("pickDialableJid: escolhe o primeiro discável, ignorando @lid", () => {
+  assert.equal(
+    pickDialableJid(["195223946834081@lid", "5511987654321@s.whatsapp.net"]),
+    "5511987654321@s.whatsapp.net"
+  );
+  assert.equal(pickDialableJid(["195223946834081@lid", null, "123@g.us"]), null);
+  assert.equal(pickDialableJid([]), null);
+});
+
+// ── resolveWhatsAppSendTarget: o core do fix outbound @lid ─────────────────────
+
+test("outbound: @lid puro NÃO vira número de envio → erro claro", () => {
+  const r = resolveWhatsAppSendTarget({
+    remoteJid: "195223946834081@lid",
+    phone: "+195223946834081", // phone derivado do lid — também não confiável
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.ok === false && r.error, NO_DIALABLE_TARGET_ERROR);
+});
+
+test("outbound: sendTargetJid discável tem prioridade mesmo com remoteJid @lid", () => {
+  const r = resolveWhatsAppSendTarget({
+    sendTargetJid: "5511987654321@s.whatsapp.net",
+    remoteJid: "195223946834081@lid",
+    phone: "+195223946834081",
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.ok === true && r.number, "5511987654321");
+  assert.equal(r.ok === true && r.source, "sendTargetJid");
+});
+
+test("outbound: remoteJid @s.whatsapp.net funciona quando não há sendTargetJid", () => {
+  const r = resolveWhatsAppSendTarget({
+    remoteJid: "5562904225255654@s.whatsapp.net",
+    phone: "+62904225255654", // phone quebrado é ignorado
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.ok === true && r.number, "5562904225255654");
+  assert.equal(r.ok === true && r.source, "remoteJid");
+});
+
+test("outbound: conversa antiga sem remoteJid usa phone com DDI 55 como fallback", () => {
+  const r = resolveWhatsAppSendTarget({ remoteJid: null, phone: "+5511987654321" });
+  assert.equal(r.ok, true);
+  assert.equal(r.ok === true && r.number, "5511987654321");
+  assert.equal(r.ok === true && r.source, "phone");
+  assert.ok(r.ok === true && r.number.startsWith("55"), "deve preservar o DDI 55");
+});
+
+test("outbound: número inválido +195223946834081 vindo de @lid não é usado", () => {
+  const r = resolveWhatsAppSendTarget({
+    remoteJid: "195223946834081@lid",
+    phone: "+195223946834081",
+  });
+  assert.equal(r.ok, false);
+});
+
+test("outbound: sem nenhum destino discável retorna erro", () => {
+  const r = resolveWhatsAppSendTarget({ remoteJid: null, phone: null });
+  assert.equal(r.ok, false);
+  assert.equal(r.ok === false && r.error, NO_DIALABLE_TARGET_ERROR);
+});
+
+// ── resolveInboundIdentity: extração do destino discável no webhook ────────────
+
+test("inbound: @lid + senderPn @s.whatsapp.net → usa senderPn como sendTarget", () => {
+  const id = resolveInboundIdentity({
+    remoteJid: "195223946834081@lid",
+    candidates: ["5511987654321@s.whatsapp.net"], // senderPn
+  });
+  assert.equal(id.remoteJid, "195223946834081@lid"); // bruto preservado
+  assert.equal(id.sendTargetJid, "5511987654321@s.whatsapp.net");
+  assert.equal(id.phone, "+5511987654321"); // phone derivado do discável, não do lid
+
+  // E o outbound resolvido a partir daí é discável:
+  const send = resolveWhatsAppSendTarget({ sendTargetJid: id.sendTargetJid, remoteJid: id.remoteJid, phone: id.phone });
+  assert.equal(send.ok === true && send.number, "5511987654321");
+});
+
+test("inbound: @lid + participant @s.whatsapp.net → usa participant", () => {
+  const id = resolveInboundIdentity({
+    remoteJid: "195223946834081@lid",
+    candidates: [undefined, null, "5562988887777@s.whatsapp.net"], // participant após vazios
+  });
+  assert.equal(id.sendTargetJid, "5562988887777@s.whatsapp.net");
+  assert.equal(id.phone, "+5562988887777");
+});
+
+test("inbound: remoteJid @s.whatsapp.net já discável vira o próprio sendTarget", () => {
+  const id = resolveInboundIdentity({
+    remoteJid: "5511987654321@s.whatsapp.net",
+    candidates: [],
+  });
+  assert.equal(id.sendTargetJid, "5511987654321@s.whatsapp.net");
+  assert.equal(id.phone, "+5511987654321");
+});
+
+test("inbound: só @lid, sem candidato discável → sendTargetJid null, phone do lid", () => {
+  const id = resolveInboundIdentity({
+    remoteJid: "195223946834081@lid",
+    candidates: [null, undefined],
+  });
+  assert.equal(id.sendTargetJid, null);
+  // phone cai no lid (para identidade/dedupe), mas outbound será bloqueado:
+  const send = resolveWhatsAppSendTarget({ sendTargetJid: id.sendTargetJid, remoteJid: id.remoteJid, phone: id.phone });
+  assert.equal(send.ok, false);
 });

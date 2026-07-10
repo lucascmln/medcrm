@@ -10,7 +10,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveTenantId } from "@/lib/tenant";
 import { sendMessage, getProviderMode } from "@/lib/whatsapp-qr-provider";
-import { resolveSendNumber } from "@/lib/whatsapp/phone";
+import { resolveWhatsAppSendTarget } from "@/lib/whatsapp/phone";
 
 export async function POST(
   req: NextRequest,
@@ -38,7 +38,7 @@ export async function POST(
 
   const conversation = await prisma.whatsAppConversation.findFirst({
     where: { id, tenantId },
-    select: { id: true, phone: true, instanceName: true, remoteJid: true },
+    select: { id: true, phone: true, instanceName: true, remoteJid: true, sendTargetJid: true },
   });
   if (!conversation) {
     return NextResponse.json({ error: "Conversa não encontrada" }, { status: 404 });
@@ -66,9 +66,34 @@ export async function POST(
   }
 
   const now = new Date();
-  // Prefere o remoteJid original de quem enviou; phone só como fallback.
-  const sendNumber = resolveSendNumber({ remoteJid: conversation.remoteJid, phone: conversation.phone });
-  const ok = await sendMessage(instanceName, sendNumber, text);
+
+  // Resolve o destino discável. NUNCA envia @lid/identificador opaco.
+  // Prioridade: sendTargetJid discável → remoteJid discável → phone real.
+  const target = resolveWhatsAppSendTarget({
+    sendTargetJid: conversation.sendTargetJid,
+    remoteJid: conversation.remoteJid,
+    phone: conversation.phone,
+  });
+
+  // Sem destino discável (ex.: conversa só com @lid): não tenta enviar.
+  if (!target.ok) {
+    const message = await prisma.whatsAppMessage.create({
+      data: {
+        tenantId,
+        conversationId: id,
+        direction: "OUTBOUND",
+        type: "TEXT",
+        body: text,
+        status: "FAILED",
+        providerError: target.error,
+        sentAt: now,
+      },
+      select: { id: true, direction: true, type: true, body: true, status: true, sentAt: true, createdAt: true },
+    });
+    return NextResponse.json({ error: target.error, message }, { status: 422 });
+  }
+
+  const send = await sendMessage(instanceName, target.number, text);
 
   const message = await prisma.whatsAppMessage.create({
     data: {
@@ -77,26 +102,28 @@ export async function POST(
       direction: "OUTBOUND",
       type: "TEXT",
       body: text,
-      status: ok ? "SENT" : "FAILED",
+      status: send.ok ? "SENT" : "FAILED",
+      providerError: send.ok ? null : (send.providerError ?? "Falha ao enviar pelo provider"),
       sentAt: now,
     },
     select: { id: true, direction: true, type: true, body: true, status: true, sentAt: true, createdAt: true },
   });
 
   // Atualiza a conversa apenas quando o envio teve sucesso.
-  if (ok) {
+  if (send.ok) {
     await prisma.whatsAppConversation.update({
       where: { id },
       data: { lastMessage: text.slice(0, 500), lastMessageAt: now, status: "OPEN" },
     });
+    return NextResponse.json({ message });
   }
 
-  if (!ok) {
-    return NextResponse.json(
-      { error: "Falha ao enviar pelo provider", message },
-      { status: 502 }
-    );
-  }
-
-  return NextResponse.json({ message });
+  return NextResponse.json(
+    {
+      error: "Falha ao enviar pelo provider",
+      providerError: send.providerError,
+      message,
+    },
+    { status: 502 }
+  );
 }

@@ -21,6 +21,7 @@ export type ConversationRef = {
   contactName: string | null;
   status: string;
   remoteJid: string | null;
+  sendTargetJid: string | null;
 };
 
 export type StageRef = { id: string };
@@ -31,7 +32,8 @@ export interface InboundInput {
   tenantId: string;
   instanceName: string;
   phone: string; // já normalizado (+55DDDNUMERO)
-  remoteJid?: string | null; // JID original de quem enviou
+  remoteJid?: string | null; // JID original de quem enviou (pode ser @lid)
+  sendTargetJid?: string | null; // melhor JID discável p/ outbound (ou null)
   contactName?: string;
   text: string;
   externalMessageId?: string | null;
@@ -79,9 +81,11 @@ export interface InboxStore {
     instanceName: string | null;
     leadId: string | null;
     remoteJid: string | null;
+    sendTargetJid: string | null;
   }): Promise<ConversationRef>;
   linkConversationLead(conversationId: string, leadId: string): Promise<void>;
   setConversationRemoteJid(conversationId: string, remoteJid: string): Promise<void>;
+  setConversationSendTarget(conversationId: string, sendTargetJid: string): Promise<void>;
   bumpConversationInbound(
     conversationId: string,
     input: { lastMessage: string; lastMessageAt: Date; contactName?: string | null }
@@ -123,6 +127,7 @@ export async function processInboundMessage(
     instanceName,
     phone,
     remoteJid,
+    sendTargetJid,
     contactName,
     text,
     externalMessageId,
@@ -177,6 +182,7 @@ export async function processInboundMessage(
       instanceName: instanceName || null,
       leadId: lead.id,
       remoteJid: remoteJid || null,
+      sendTargetJid: sendTargetJid || null,
     });
     conversationCreated = true;
   } else {
@@ -190,6 +196,12 @@ export async function processInboundMessage(
     if (!conversation.remoteJid && remoteJid) {
       await store.setConversationRemoteJid(conversation.id, remoteJid);
       conversation = { ...conversation, remoteJid };
+    }
+    // Backfill do sendTargetJid discável — nunca sobrescreve um bom valor
+    // existente (não regride para null/@lid quando o payload não traz o discável).
+    if (!conversation.sendTargetJid && sendTargetJid) {
+      await store.setConversationSendTarget(conversation.id, sendTargetJid);
+      conversation = { ...conversation, sendTargetJid };
     }
   }
 

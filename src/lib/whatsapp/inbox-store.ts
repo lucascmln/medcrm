@@ -86,7 +86,7 @@ export const prismaInboxStore: InboxStore = {
   async findConversation(tenantId: string, phone: string): Promise<ConversationRef | null> {
     const conv = await prisma.whatsAppConversation.findUnique({
       where: { tenantId_phone: { tenantId, phone } },
-      select: { id: true, leadId: true, phone: true, contactName: true, status: true, remoteJid: true },
+      select: { id: true, leadId: true, phone: true, contactName: true, status: true, remoteJid: true, sendTargetJid: true },
     });
     return conv;
   },
@@ -100,10 +100,11 @@ export const prismaInboxStore: InboxStore = {
         instanceName: input.instanceName,
         leadId: input.leadId,
         remoteJid: input.remoteJid,
+        sendTargetJid: input.sendTargetJid,
         status: "OPEN",
         unreadCount: 0,
       },
-      select: { id: true, leadId: true, phone: true, contactName: true, status: true, remoteJid: true },
+      select: { id: true, leadId: true, phone: true, contactName: true, status: true, remoteJid: true, sendTargetJid: true },
     });
     return conv;
   },
@@ -119,6 +120,13 @@ export const prismaInboxStore: InboxStore = {
     await prisma.whatsAppConversation.update({
       where: { id: conversationId },
       data: { remoteJid },
+    });
+  },
+
+  async setConversationSendTarget(conversationId: string, sendTargetJid: string): Promise<void> {
+    await prisma.whatsAppConversation.update({
+      where: { id: conversationId },
+      data: { sendTargetJid },
     });
   },
 

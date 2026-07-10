@@ -15,7 +15,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { rateLimit, getIp } from "@/lib/rate-limit";
-import { normalizePhone } from "@/lib/whatsapp/phone";
+import { resolveInboundIdentity } from "@/lib/whatsapp/phone";
 import { extractMessageText, deriveMessageType } from "@/lib/whatsapp/messages";
 import { processInboundMessage } from "@/lib/whatsapp/inbox";
 import { prismaInboxStore } from "@/lib/whatsapp/inbox-store";
@@ -23,9 +23,14 @@ import { prismaInboxStore } from "@/lib/whatsapp/inbox-store";
 // ── Tipos Evolution API ───────────────────────────────────────────────────────
 
 interface EvolutionMessageKey {
-  remoteJid: string; // ex: "5511987654321@s.whatsapp.net"
+  remoteJid: string; // ex: "5511987654321@s.whatsapp.net" OU "1952...@lid"
   fromMe: boolean;
   id: string;
+  // LID addressing: quando remoteJid é @lid, o número discável real vem aqui.
+  senderPn?: string;       // "5511987654321@s.whatsapp.net"
+  participant?: string;    // remetente em grupos / contraparte discável
+  participantPn?: string;
+  remoteJidAlt?: string;   // JID alternativo (às vezes o discável)
 }
 
 interface EvolutionMessageData {
@@ -35,12 +40,15 @@ interface EvolutionMessageData {
   messageType?: string;
   messageTimestamp?: number;
   status?: string;
+  senderPn?: string;    // também aparece no nível de data em algumas versões
+  participant?: string;
 }
 
 interface EvolutionWebhookPayload {
   event: string; // "messages.upsert" | "connection.update" | "qrcode.updated"
   instance: string; // instanceName
   data: EvolutionMessageData | Record<string, unknown>;
+  sender?: string; // top-level: JID de quem enviou (algumas versões)
   apikey?: string;
 }
 
@@ -195,7 +203,21 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const phone = normalizePhone(remoteJid);
+    // Resolve identidade separando o remoteJid bruto (pode ser @lid) do melhor
+    // destino discável (@s.whatsapp.net/@c.us) vindo dos campos do payload.
+    const identity = resolveInboundIdentity({
+      remoteJid,
+      candidates: [
+        msgData.key?.senderPn,
+        msgData.senderPn,
+        msgData.key?.participantPn,
+        msgData.key?.remoteJidAlt,
+        msgData.key?.participant,
+        msgData.participant,
+        payload.sender,
+      ],
+    });
+
     const text = extractMessageText(msgData.message);
     const type = deriveMessageType(msgData.message);
     const sentAt = msgData.messageTimestamp
@@ -205,8 +227,9 @@ export async function POST(req: NextRequest) {
     const result = await processInboundMessage(prismaInboxStore, {
       tenantId,
       instanceName,
-      phone,
-      remoteJid,
+      phone: identity.phone,
+      remoteJid: identity.remoteJid,
+      sendTargetJid: identity.sendTargetJid,
       contactName: msgData.pushName,
       text,
       type,
