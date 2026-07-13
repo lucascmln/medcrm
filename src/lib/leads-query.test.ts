@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { activeLeadWhere, isLeadVisible } from "./leads-query";
+import { activeLeadWhere, isLeadVisible, stripProtectedLeadFields } from "./leads-query";
 
 test("activeLeadWhere: sempre exclui excluídos e escopa por tenant", () => {
   const w = activeLeadWhere("t1");
@@ -59,4 +59,26 @@ test("relatórios: filtro activeLeadWhere sempre exclui leads excluídos", () =>
 test("lead ativo continua contando normalmente nas métricas", () => {
   const onlyActive = [{ id: "x", deletedAt: null }, { id: "y", deletedAt: undefined }];
   assert.equal(countLeadsForMetrics(onlyActive), 2);
+});
+
+// ── Anti mass-assignment no update de lead ────────────────────────────────────
+
+test("stripProtectedLeadFields: remove campos que permitiriam abuso", () => {
+  const out = stripProtectedLeadFields({
+    name: "Novo",
+    funnelStageId: "s1",
+    tenantId: "OUTRO_TENANT", // tentativa de mover de tenant
+    deletedAt: null,           // tentativa de "des-excluir"
+    id: "forjado",
+    createdAt: "2000-01-01",
+    updatedAt: "2000-01-01",
+  });
+  assert.deepEqual(out, { name: "Novo", funnelStageId: "s1" });
+  assert.equal("tenantId" in out, false);
+  assert.equal("deletedAt" in out, false);
+});
+
+test("stripProtectedLeadFields: mantém intactos os campos editáveis normais", () => {
+  const input = { name: "A", phone: "+55", email: "a@b.com", assignedToId: "u1", potentialValue: "10" };
+  assert.deepEqual(stripProtectedLeadFields(input), input);
 });

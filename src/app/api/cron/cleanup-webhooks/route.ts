@@ -17,11 +17,17 @@ export const runtime = "nodejs";
 export const maxDuration = 60; // segundos
 
 export async function GET(req: NextRequest) {
-  // Valida autorização — Vercel injeta CRON_SECRET automaticamente
+  // Valida autorização — Vercel injeta CRON_SECRET automaticamente.
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  // Fail-closed: sem CRON_SECRET configurado, o endpoint destrutivo NÃO roda
+  // (evita ficar publicamente aberto se a env var faltar em algum ambiente).
+  if (!cronSecret) {
+    console.error("[cron/cleanup-webhooks] CRON_SECRET não configurado — execução bloqueada");
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (authHeader !== `Bearer ${cronSecret}`) {
     console.warn("[cron/cleanup-webhooks] Requisição não autorizada — header inválido");
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -48,10 +54,8 @@ export async function GET(req: NextRequest) {
       ranAt: new Date().toISOString(),
     });
   } catch (err: any) {
-    console.error("[cron/cleanup-webhooks] Erro ao limpar eventos:", err.message);
-    return NextResponse.json(
-      { success: false, error: err.message },
-      { status: 500 }
-    );
+    console.error("[cron/cleanup-webhooks] Erro ao limpar eventos:", err?.message);
+    // Não expõe detalhes internos ao chamador.
+    return NextResponse.json({ success: false, error: "Cleanup failed" }, { status: 500 });
   }
 }

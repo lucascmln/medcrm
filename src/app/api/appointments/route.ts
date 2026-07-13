@@ -53,6 +53,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Título e data são obrigatórios" }, { status: 400 });
     }
 
+    // Se vier leadId, ele precisa ser um lead ATIVO do mesmo tenant.
+    if (body.leadId) {
+      const lead = await prisma.lead.findFirst({
+        where: { id: body.leadId, tenantId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!lead) {
+        return NextResponse.json({ error: "Lead inválido" }, { status: 400 });
+      }
+    }
+
     const appointment = await prisma.appointment.create({
       data: {
         tenantId,
@@ -71,8 +82,9 @@ export async function POST(req: NextRequest) {
     });
 
     if (body.leadId) {
-      await prisma.lead.update({
-        where: { id: body.leadId },
+      // updateMany escopado por tenant — nunca escreve em lead de outro tenant.
+      await prisma.lead.updateMany({
+        where: { id: body.leadId, tenantId, deletedAt: null },
         data: { scheduledAt: new Date(body.scheduledAt), lastInteractionAt: new Date() },
       });
     }

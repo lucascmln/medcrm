@@ -52,8 +52,9 @@ export async function GET(req: NextRequest) {
     const unitId = searchParams.get("unitId") || "";
     const startDate = searchParams.get("startDate") || "";
     const endDate = searchParams.get("endDate") || "";
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "20");
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1") || 1);
+    // Limita o tamanho de página (evita payloads gigantes / abuso via ?limit=)
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "20") || 20));
     const all = searchParams.get("all") === "true";
 
     // Safe, whitelisted sorting. Unknown fields fall back to newest-first.
@@ -229,9 +230,7 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error("[leads POST] error:", error?.message ?? error);
     if (error?.code) console.error("[leads POST] code:", error.code, "meta:", JSON.stringify(error?.meta));
-    return NextResponse.json(
-      { error: "Internal server error", detail: error?.message ?? "unknown" },
-      { status: 500 }
-    );
+    // Não expor detalhes internos (mensagem do Prisma/DB) ao cliente.
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

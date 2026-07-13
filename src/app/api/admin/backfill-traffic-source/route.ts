@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { getEffectiveTenantId } from "@/lib/tenant";
 
 /**
  * Maps a LeadSource name to the classified trafficSource value.
@@ -25,38 +26,40 @@ function inferTrafficSource(sourceName: string | null | undefined): string {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.user.role !== "SUPER_ADMIN" && session.user.role !== "ADMIN") {
+
+  // Ferramenta administrativa perigosa (UPDATE em massa): apenas SUPER_ADMIN.
+  if (session.user.role !== "SUPER_ADMIN") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // Load all leads with null trafficSource that have a sourceId
+  // Exige um tenant explícito (impersonação) — nunca roda em TODOS os tenants.
+  const tenantId = getEffectiveTenantId(req, session);
+  if (!tenantId) {
+    return NextResponse.json(
+      { error: "Selecione um tenant antes de executar o backfill" },
+      { status: 400 }
+    );
+  }
+
+  // Leads do tenant selecionado com trafficSource nulo.
   const leads = await prisma.lead.findMany({
-    where: { trafficSource: null },
+    where: { tenantId, trafficSource: null },
     select: { id: true, sourceId: true, source: { select: { name: true } } },
   });
 
   let updated = 0;
-  let skipped = 0;
-
   for (const lead of leads) {
     const inferred = inferTrafficSource(lead.source?.name);
+    // Escopado por tenant também no UPDATE (defesa em profundidade).
     await prisma.$executeRaw`
-      UPDATE leads SET traffic_source = ${inferred} WHERE id = ${lead.id}
+      UPDATE leads SET traffic_source = ${inferred}
+      WHERE id = ${lead.id} AND "tenantId" = ${tenantId}
     `;
     updated++;
   }
 
-  // Count leads that still have no source at all (can't infer)
-  skipped = leads.filter((l) => !l.sourceId && !l.source).length;
+  const skipped = leads.filter((l) => !l.sourceId && !l.source).length;
 
-  return NextResponse.json({
-    message: `Backfill concluído`,
-    updated,
-    skipped,
-    details: leads.map((l) => ({
-      id: l.id,
-      source: l.source?.name ?? null,
-      inferredTrafficSource: inferTrafficSource(l.source?.name),
-    })),
-  });
+  // Não retorna ids/nomes de leads — apenas contagens agregadas.
+  return NextResponse.json({ message: "Backfill concluído", updated, skipped });
 }
